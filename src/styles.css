@@ -847,9 +847,9 @@ body {
   font-style: italic;
 }
 
+.text-input-group input,
 .text-input-group textarea {
   width: 100%;
-  height: 200px;
   padding: 8px;
   background-color: var(--bg-primary);
   border: 1px solid var(--border-color);
@@ -857,7 +857,20 @@ body {
   color: var(--text-primary);
   font-family: inherit;
   font-size: 13px;
+}
+
+.text-input-group input {
+  height: 36px;
+}
+
+.text-input-group textarea {
+  height: 200px;
   resize: vertical;
+}
+
+.text-input-group input::placeholder,
+.text-input-group textarea::placeholder {
+  color: var(--text-secondary);
 }
 
 .dialog-actions {
