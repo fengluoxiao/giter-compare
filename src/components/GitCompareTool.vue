@@ -482,11 +482,28 @@ const selectFile = async (path: string) => {
       filePath: `${currentPath.value}/${file.path}`
     });
 
-    const indexContent = await invoke<string>('get_file_content_at_revision', {
-      repoPath: currentPath.value,
-      filePath: file.path,
-      revision: 'HEAD'
-    });
+    // 根据文件状态选择比较方式
+    // Added: 新文件，与空内容比较
+    // Modified: 修改的文件，与 HEAD 比较
+    let indexContent = '';
+    const fileStatus = file.status?.toLowerCase();
+    
+    if (fileStatus === 'added') {
+      // 新添加的文件，旧版本为空
+      indexContent = '';
+    } else {
+      // 修改的文件，获取 HEAD 版本
+      try {
+        indexContent = await invoke<string>('get_file_content_at_revision', {
+          repoPath: currentPath.value,
+          filePath: file.path,
+          revision: 'HEAD'
+        });
+      } catch (e) {
+        // 如果获取失败，视为空内容
+        indexContent = '';
+      }
+    }
 
     isBinary.value = workContent === '[二进制文件]' || indexContent === '[二进制文件]';
 
