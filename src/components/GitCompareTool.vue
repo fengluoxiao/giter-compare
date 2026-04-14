@@ -38,14 +38,27 @@
     <!-- 主内容区 -->
     <div class="main-container">
       <!-- 左侧项目列表 -->
-      <aside class="project-sidebar">
+      <aside 
+        class="project-sidebar" 
+        :class="{ collapsed: isProjectSidebarCollapsed }"
+        :style="{ width: isProjectSidebarCollapsed ? '40px' : projectSidebarWidth + 'px' }"
+      >
         <div class="project-header">
-          <h3>项目列表</h3>
-          <button class="btn btn-icon" @click="showAddProjectDialog" title="添加项目">
-            ➕
-          </button>
+          <h3 v-show="!isProjectSidebarCollapsed">项目列表</h3>
+          <div class="project-header-buttons">
+            <button class="btn btn-icon" @click="showAddProjectDialog" title="添加项目">
+              ➕
+            </button>
+            <button 
+              class="btn btn-icon btn-collapse" 
+              @click="toggleProjectSidebar"
+              :title="isProjectSidebarCollapsed ? '展开' : '折叠'"
+            >
+              {{ isProjectSidebarCollapsed ? '▶' : '◀' }}
+            </button>
+          </div>
         </div>
-        <div class="project-list">
+        <div v-show="!isProjectSidebarCollapsed" class="project-list">
           <div
             v-for="project in projects"
             :key="project.id"
@@ -67,13 +80,32 @@
             点击 + 添加 Git 项目
           </div>
         </div>
+        <!-- 拖拽调整宽度的手柄 -->
+        <div 
+          v-show="!isProjectSidebarCollapsed"
+          class="resize-handle"
+          @mousedown="startResizeProjectSidebar"
+        ></div>
       </aside>
 
       <!-- 中间文件树 -->
-      <aside class="sidebar">
+      <aside 
+        class="sidebar"
+        :class="{ collapsed: isFileSidebarCollapsed }"
+        :style="{ width: isFileSidebarCollapsed ? '40px' : fileSidebarWidth + 'px' }"
+      >
         <div class="sidebar-header">
-          <h3>文件变更</h3>
-          <div class="filter-tabs">
+          <div class="sidebar-header-title">
+            <h3 v-show="!isFileSidebarCollapsed">文件变更</h3>
+            <button 
+              class="btn btn-icon btn-collapse" 
+              @click="toggleFileSidebar"
+              :title="isFileSidebarCollapsed ? '展开' : '折叠'"
+            >
+              {{ isFileSidebarCollapsed ? '▶' : '◀' }}
+            </button>
+          </div>
+          <div v-show="!isFileSidebarCollapsed" class="filter-tabs">
             <button 
               class="tab" 
               :class="{ active: viewMode === 'working' }"
@@ -100,7 +132,7 @@
             </label>
           </div>
         </div>
-        <div class="file-list">
+        <div v-show="!isFileSidebarCollapsed" class="file-list">
           <FileTree
             v-if="fileTree.length > 0"
             :nodes="fileTree"
@@ -111,6 +143,12 @@
             选择左侧项目或点击"打开文件夹"
           </div>
         </div>
+        <!-- 拖拽调整宽度的手柄 -->
+        <div 
+          v-show="!isFileSidebarCollapsed"
+          class="resize-handle resize-handle-file"
+          @mousedown="startResizeFileSidebar"
+        ></div>
       </aside>
 
       <!-- 右侧比对区 -->
@@ -305,6 +343,14 @@ const showAddProject = ref(false);
 const newProjectName = ref('');
 const newProjectPath = ref('');
 
+// 侧边栏宽度和折叠状态
+const projectSidebarWidth = ref(200);
+const fileSidebarWidth = ref(280);
+const isProjectSidebarCollapsed = ref(false);
+const isFileSidebarCollapsed = ref(false);
+const isResizingProject = ref(false);
+const isResizingFile = ref(false);
+
 // 代码内容区域 refs，用于同步滚动
 const leftCodeContent = ref<HTMLElement | null>(null);
 const rightCodeContent = ref<HTMLElement | null>(null);
@@ -490,6 +536,75 @@ const loadProjects = () => {
       console.error('Failed to load projects:', e);
     }
   }
+
+  // 加载侧边栏状态
+  const savedProjectWidth = localStorage.getItem('giter-project-sidebar-width');
+  const savedFileWidth = localStorage.getItem('giter-file-sidebar-width');
+  const savedProjectCollapsed = localStorage.getItem('giter-project-sidebar-collapsed');
+  const savedFileCollapsed = localStorage.getItem('giter-file-sidebar-collapsed');
+
+  if (savedProjectWidth) projectSidebarWidth.value = parseInt(savedProjectWidth);
+  if (savedFileWidth) fileSidebarWidth.value = parseInt(savedFileWidth);
+  if (savedProjectCollapsed) isProjectSidebarCollapsed.value = savedProjectCollapsed === 'true';
+  if (savedFileCollapsed) isFileSidebarCollapsed.value = savedFileCollapsed === 'true';
+};
+
+// 侧边栏折叠/展开
+const toggleProjectSidebar = () => {
+  isProjectSidebarCollapsed.value = !isProjectSidebarCollapsed.value;
+  localStorage.setItem('giter-project-sidebar-collapsed', isProjectSidebarCollapsed.value.toString());
+};
+
+const toggleFileSidebar = () => {
+  isFileSidebarCollapsed.value = !isFileSidebarCollapsed.value;
+  localStorage.setItem('giter-file-sidebar-collapsed', isFileSidebarCollapsed.value.toString());
+};
+
+// 拖拽调整宽度
+const startResizeProjectSidebar = (e: MouseEvent) => {
+  isResizingProject.value = true;
+  const startX = e.clientX;
+  const startWidth = projectSidebarWidth.value;
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isResizingProject.value) return;
+    const delta = e.clientX - startX;
+    const newWidth = Math.max(150, Math.min(400, startWidth + delta));
+    projectSidebarWidth.value = newWidth;
+  };
+
+  const handleMouseUp = () => {
+    isResizingProject.value = false;
+    localStorage.setItem('giter-project-sidebar-width', projectSidebarWidth.value.toString());
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+  };
+
+  document.addEventListener('mousemove', handleMouseMove);
+  document.addEventListener('mouseup', handleMouseUp);
+};
+
+const startResizeFileSidebar = (e: MouseEvent) => {
+  isResizingFile.value = true;
+  const startX = e.clientX;
+  const startWidth = fileSidebarWidth.value;
+
+  const handleMouseMove = (e: MouseEvent) => {
+    if (!isResizingFile.value) return;
+    const delta = e.clientX - startX;
+    const newWidth = Math.max(200, Math.min(500, startWidth + delta));
+    fileSidebarWidth.value = newWidth;
+  };
+
+  const handleMouseUp = () => {
+    isResizingFile.value = false;
+    localStorage.setItem('giter-file-sidebar-width', fileSidebarWidth.value.toString());
+    document.removeEventListener('mousemove', handleMouseMove);
+    document.removeEventListener('mouseup', handleMouseUp);
+  };
+
+  document.addEventListener('mousemove', handleMouseMove);
+  document.addEventListener('mouseup', handleMouseUp);
 };
 
 // 递归构建文件树
