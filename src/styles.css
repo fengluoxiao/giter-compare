@@ -261,8 +261,27 @@ body {
 
 .project-sidebar.collapsed .project-header,
 .sidebar.collapsed .sidebar-header {
-  padding: 12px 4px;
+  padding: 8px 4px;
   justify-content: center;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.project-sidebar.collapsed .project-header-buttons {
+  flex-direction: column;
+  gap: 8px;
+}
+
+.sidebar.collapsed .sidebar-header-title {
+  flex-direction: column;
+  gap: 8px;
+  margin-bottom: 0;
+}
+
+.project-sidebar.collapsed .btn-icon,
+.sidebar.collapsed .btn-icon {
+  width: 28px;
+  height: 28px;
 }
 
 /* 侧边栏头部 */
