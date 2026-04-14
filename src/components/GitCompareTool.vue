@@ -37,7 +37,39 @@
 
     <!-- 主内容区 -->
     <div class="main-container">
-      <!-- 左侧文件树 -->
+      <!-- 左侧项目列表 -->
+      <aside class="project-sidebar">
+        <div class="project-header">
+          <h3>项目列表</h3>
+          <button class="btn btn-icon" @click="showAddProjectDialog" title="添加项目">
+            ➕
+          </button>
+        </div>
+        <div class="project-list">
+          <div
+            v-for="project in projects"
+            :key="project.id"
+            class="project-item"
+            :class="{ active: currentProjectId === project.id }"
+            @click="switchProject(project)"
+          >
+            <span class="project-icon">📁</span>
+            <span class="project-name">{{ project.name }}</span>
+            <button 
+              class="btn btn-icon btn-delete" 
+              @click.stop="removeProject(project.id)"
+              title="删除项目"
+            >
+              ✕
+            </button>
+          </div>
+          <div v-if="projects.length === 0" class="empty-state">
+            点击 + 添加 Git 项目
+          </div>
+        </div>
+      </aside>
+
+      <!-- 中间文件树 -->
       <aside class="sidebar">
         <div class="sidebar-header">
           <h3>文件变更</h3>
@@ -76,7 +108,7 @@
             @toggle="toggleDirectory"
           />
           <div v-else class="empty-state">
-            点击"打开文件夹"选择 Git 仓库
+            选择左侧项目或点击"打开文件夹"
           </div>
         </div>
       </aside>
@@ -174,6 +206,28 @@
         </div>
       </div>
     </div>
+
+    <!-- 添加项目对话框 -->
+    <div class="dialog" :class="{ open: showAddProject }">
+      <div class="dialog-content">
+        <h3>添加项目</h3>
+        <div class="text-inputs">
+          <div class="text-input-group">
+            <label>项目名称</label>
+            <input v-model="newProjectName" placeholder="输入项目名称..." />
+          </div>
+          <div class="text-input-group">
+            <label>项目路径</label>
+            <button class="btn btn-secondary" @click="selectProjectPath">选择文件夹</button>
+            <span v-if="newProjectPath" class="selected-path">{{ newProjectPath }}</span>
+          </div>
+        </div>
+        <div class="dialog-actions">
+          <button class="btn btn-secondary" @click="showAddProject = false">取消</button>
+          <button class="btn btn-primary" @click="addProject" :disabled="!newProjectName || !newProjectPath">添加</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -225,6 +279,12 @@ interface FileDiff {
   is_binary: boolean;
 }
 
+interface Project {
+  id: string;
+  name: string;
+  path: string;
+}
+
 const theme = ref('dark');
 const viewMode = ref<'working' | 'staged'>('working');
 const showAllFiles = ref(true);
@@ -237,6 +297,13 @@ const leftLines = ref<DiffLine[]>([]);
 const rightLines = ref<DiffLine[]>([]);
 const isBinary = ref(false);
 const diffStats = ref<{ added: number; removed: number; changed: number } | null>(null);
+
+// 多项目支持
+const projects = ref<Project[]>([]);
+const currentProjectId = ref<string>('');
+const showAddProject = ref(false);
+const newProjectName = ref('');
+const newProjectPath = ref('');
 
 // 代码内容区域 refs，用于同步滚动
 const leftCodeContent = ref<HTMLElement | null>(null);
@@ -290,6 +357,9 @@ onMounted(async () => {
     showAllFiles.value = savedShowAll === 'true';
   }
 
+  // 加载保存的项目列表
+  loadProjects();
+
   unlistenFileChange = await listen('file-changed', (event) => {
     console.log('File changed event received:', event);
     if (currentPath.value) {
@@ -333,6 +403,92 @@ const openFolder = async () => {
   } catch (e) {
     console.error('Failed to open folder:', e);
     alert('打开文件夹失败: ' + e);
+  }
+};
+
+// 项目相关方法
+const showAddProjectDialog = () => {
+  showAddProject.value = true;
+  newProjectName.value = '';
+  newProjectPath.value = '';
+};
+
+const selectProjectPath = async () => {
+  try {
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: '选择 Git 仓库文件夹'
+    });
+
+    if (selected && typeof selected === 'string') {
+      newProjectPath.value = selected;
+      // 如果没有输入名称，使用文件夹名
+      if (!newProjectName.value) {
+        const parts = selected.split('/');
+        newProjectName.value = parts[parts.length - 1] || parts[parts.length - 2] || '新项目';
+      }
+    }
+  } catch (e) {
+    console.error('Failed to select path:', e);
+  }
+};
+
+const addProject = async () => {
+  if (!newProjectName.value || !newProjectPath.value) return;
+
+  const project: Project = {
+    id: Date.now().toString(),
+    name: newProjectName.value,
+    path: newProjectPath.value
+  };
+
+  projects.value.push(project);
+  saveProjects();
+
+  // 自动切换到新项目
+  await switchProject(project);
+
+  showAddProject.value = false;
+  newProjectName.value = '';
+  newProjectPath.value = '';
+};
+
+const removeProject = (projectId: string) => {
+  const index = projects.value.findIndex(p => p.id === projectId);
+  if (index === -1) return;
+
+  projects.value.splice(index, 1);
+  saveProjects();
+
+  // 如果删除的是当前项目，清空当前状态
+  if (currentProjectId.value === projectId) {
+    currentProjectId.value = '';
+    currentPath.value = '';
+    fileTree.value = [];
+    currentFile.value = null;
+  }
+};
+
+const switchProject = async (project: Project) => {
+  currentProjectId.value = project.id;
+  currentPath.value = project.path;
+  await loadFileTree(project.path);
+  await invoke('start_file_watcher', { repoPath: project.path });
+};
+
+const saveProjects = () => {
+  localStorage.setItem('giter-projects', JSON.stringify(projects.value));
+};
+
+const loadProjects = () => {
+  const saved = localStorage.getItem('giter-projects');
+  if (saved) {
+    try {
+      projects.value = JSON.parse(saved);
+    } catch (e) {
+      console.error('Failed to load projects:', e);
+    }
   }
 };
 
