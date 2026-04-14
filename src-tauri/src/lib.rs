@@ -584,15 +584,77 @@ async fn get_all_tracked_files(repo_path: String) -> Result<String, String> {
     }
 }
 
+use tauri::State;
+
 #[tauri::command]
-async fn start_file_watcher(repo_path: String, window: tauri::Window) -> Result<(), String> {
-    // 文件监控实现
+async fn start_file_watcher(
+    repo_path: String,
+    window: tauri::Window,
+    file_watcher: State<'_, Arc<Mutex<FileWatcher>>>,
+) -> Result<(), String> {
+    println!("Starting file watcher for: {}", repo_path);
+    
+    let mut watcher_guard = file_watcher.lock().map_err(|e| e.to_string())?;
+
+    // 如果已经有监控器，先停止
+    if watcher_guard.watcher.is_some() {
+        println!("Stopping existing watcher");
+        watcher_guard.watcher = None;
+    }
+
+    let window_clone = window.clone();
+    let repo_path_clone = repo_path.clone();
+
+    // 创建新的监控器
+    let mut debouncer = new_debouncer(
+        Duration::from_millis(300),
+        move |result: Result<Vec<_>, _>| {
+            match result {
+                Ok(events) => {
+                    println!("File events detected: {} events", events.len());
+                    let has_changes = events.iter().any(|e| {
+                        matches!(e.kind, DebouncedEventKind::Any)
+                    });
+
+                    if has_changes {
+                        println!("Emitting file-changed event");
+                        // 发送文件变更事件到前端
+                        let emit_result = window_clone.emit("file-changed", serde_json::json!({
+                            "repo_path": &repo_path_clone
+                        }));
+                        if let Err(e) = emit_result {
+                            eprintln!("Failed to emit event: {:?}", e);
+                        }
+                    }
+                }
+                Err(e) => {
+                    eprintln!("Watch error: {:?}", e);
+                }
+            }
+        },
+    )
+    .map_err(|e| format!("Failed to create debouncer: {}", e))?;
+
+    // 监控整个仓库目录
+    debouncer
+        .watcher()
+        .watch(Path::new(&repo_path), RecursiveMode::Recursive)
+        .map_err(|e| format!("Failed to watch directory: {}", e))?;
+
+    println!("File watcher started successfully");
+    watcher_guard.watcher = Some(debouncer);
+    watcher_guard.repo_path = Some(repo_path);
+
     Ok(())
 }
 
 #[tauri::command]
-async fn stop_file_watcher() -> Result<(), String> {
-    // 停止文件监控
+async fn stop_file_watcher(
+    file_watcher: State<'_, Arc<Mutex<FileWatcher>>>,
+) -> Result<(), String> {
+    let mut watcher_guard = file_watcher.lock().map_err(|e| e.to_string())?;
+    watcher_guard.watcher = None;
+    watcher_guard.repo_path = None;
     Ok(())
 }
 

@@ -290,8 +290,10 @@ onMounted(async () => {
     showAllFiles.value = savedShowAll === 'true';
   }
 
-  unlistenFileChange = await listen('file-changed', () => {
+  unlistenFileChange = await listen('file-changed', (event) => {
+    console.log('File changed event received:', event);
     if (currentPath.value) {
+      console.log('Refreshing due to file change');
       refresh();
     }
   });
