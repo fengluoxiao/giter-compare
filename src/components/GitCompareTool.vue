@@ -251,18 +251,19 @@
         <h3>添加项目</h3>
         <div class="text-inputs">
           <div class="text-input-group">
-            <label>项目名称</label>
-            <input v-model="newProjectName" placeholder="输入项目名称..." />
-          </div>
-          <div class="text-input-group">
-            <label>项目路径</label>
+            <label>项目路径 <span class="required">*</span></label>
             <button class="btn btn-secondary" @click="selectProjectPath">选择文件夹</button>
             <span v-if="newProjectPath" class="selected-path">{{ newProjectPath }}</span>
+            <span v-else class="selected-path placeholder">请选择 Git 仓库文件夹</span>
+          </div>
+          <div class="text-input-group">
+            <label>项目备注（可选）</label>
+            <input v-model="newProjectName" placeholder="留空则使用文件夹名称" />
           </div>
         </div>
         <div class="dialog-actions">
           <button class="btn btn-secondary" @click="showAddProject = false">取消</button>
-          <button class="btn btn-primary" @click="addProject" :disabled="!newProjectName || !newProjectPath">添加</button>
+          <button class="btn btn-primary" @click="addProject" :disabled="!newProjectPath">添加</button>
         </div>
       </div>
     </div>
@@ -481,11 +482,18 @@ const selectProjectPath = async () => {
 };
 
 const addProject = async () => {
-  if (!newProjectName.value || !newProjectPath.value) return;
+  if (!newProjectPath.value) return;
+
+  // 如果没有输入备注名称，使用文件夹名
+  let projectName = newProjectName.value.trim();
+  if (!projectName) {
+    const parts = newProjectPath.value.split('/');
+    projectName = parts[parts.length - 1] || parts[parts.length - 2] || '新项目';
+  }
 
   const project: Project = {
     id: Date.now().toString(),
-    name: newProjectName.value,
+    name: projectName,
     path: newProjectPath.value
   };
 
