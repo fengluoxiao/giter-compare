@@ -877,6 +877,115 @@ body {
   color: var(--text-secondary);
 }
 
+/* 大对话框 */
+.dialog-content-large {
+  max-width: 700px;
+}
+
+/* 添加项目表单 */
+.add-project-form {
+  margin-bottom: 16px;
+}
+
+.form-row {
+  display: flex;
+  gap: 12px;
+  align-items: flex-end;
+}
+
+.form-group {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.form-group:first-child {
+  flex: 0 0 200px;
+}
+
+.form-group:nth-child(2) {
+  flex: 1;
+}
+
+.form-group label {
+  font-size: 12px;
+  color: var(--text-secondary);
+}
+
+.btn-add-to-list {
+  flex: 0 0 auto;
+  white-space: nowrap;
+}
+
+/* 待添加项目列表 */
+.pending-projects {
+  margin-bottom: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--bg-primary);
+  max-height: 200px;
+  overflow-y: auto;
+}
+
+.pending-projects h4 {
+  padding: 12px;
+  font-size: 13px;
+  color: var(--text-secondary);
+  border-bottom: 1px solid var(--border-color);
+  margin: 0;
+}
+
+.pending-list {
+  padding: 8px;
+}
+
+.pending-item {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  border-radius: 4px;
+  background-color: var(--bg-secondary);
+  margin-bottom: 8px;
+}
+
+.pending-item:last-child {
+  margin-bottom: 0;
+}
+
+.pending-name {
+  font-weight: 500;
+  color: var(--text-primary);
+  flex: 0 0 120px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-path {
+  flex: 1;
+  font-size: 12px;
+  color: var(--text-secondary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.pending-item .btn-remove {
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  background-color: transparent;
+  color: var(--text-secondary);
+  font-size: 14px;
+  border-radius: 3px;
+}
+
+.pending-item .btn-remove:hover {
+  background-color: rgba(255, 0, 0, 0.2);
+  color: #ff4444;
+}
+
 .dialog-actions {
   display: flex;
   justify-content: flex-end;

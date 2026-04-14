@@ -247,23 +247,37 @@
 
     <!-- 添加项目对话框 -->
     <div class="dialog" :class="{ open: showAddProject }">
-      <div class="dialog-content">
+      <div class="dialog-content dialog-content-large">
         <h3>添加项目</h3>
-        <div class="text-inputs">
-          <div class="text-input-group">
-            <label>项目路径 <span class="required">*</span></label>
-            <button class="btn btn-secondary" @click="selectProjectPath">选择文件夹</button>
-            <span v-if="newProjectPath" class="selected-path">{{ newProjectPath }}</span>
-            <span v-else class="selected-path placeholder">请选择 Git 仓库文件夹</span>
-          </div>
-          <div class="text-input-group">
-            <label>项目备注（可选）</label>
-            <input v-model="newProjectName" placeholder="留空则使用文件夹名称" />
+        <div class="add-project-form">
+          <div class="form-row">
+            <div class="form-group">
+              <label>项目路径</label>
+              <button class="btn btn-secondary" @click="selectProjectPath">选择文件夹</button>
+            </div>
+            <div class="form-group">
+              <label>项目备注（可选）</label>
+              <input v-model="newProjectName" placeholder="留空则使用文件夹名称" @keyup.enter="addToPendingList" />
+            </div>
+            <button class="btn btn-primary btn-add-to-list" @click="addToPendingList" :disabled="!newProjectPath">添加到列表</button>
           </div>
         </div>
+        
+        <!-- 待添加项目列表 -->
+        <div v-if="pendingProjects.length > 0" class="pending-projects">
+          <h4>待添加项目 ({{ pendingProjects.length }})</h4>
+          <div class="pending-list">
+            <div v-for="(item, index) in pendingProjects" :key="index" class="pending-item">
+              <span class="pending-name">{{ item.name }}</span>
+              <span class="pending-path">{{ item.path }}</span>
+              <button class="btn btn-icon btn-remove" @click="removeFromPending(index)" title="删除">✕</button>
+            </div>
+          </div>
+        </div>
+        
         <div class="dialog-actions">
-          <button class="btn btn-secondary" @click="showAddProject = false">取消</button>
-          <button class="btn btn-primary" @click="addProject" :disabled="!newProjectPath">添加</button>
+          <button class="btn btn-secondary" @click="closeAddProjectDialog">取消</button>
+          <button class="btn btn-primary" @click="confirmAddProjects" :disabled="pendingProjects.length === 0">确定添加 ({{ pendingProjects.length }})</button>
         </div>
       </div>
     </div>
@@ -343,6 +357,7 @@ const currentProjectId = ref<string>('');
 const showAddProject = ref(false);
 const newProjectName = ref('');
 const newProjectPath = ref('');
+const pendingProjects = ref<{ name: string; path: string }[]>([]);
 
 // 侧边栏宽度和折叠状态
 const projectSidebarWidth = ref(200);
@@ -479,6 +494,71 @@ const selectProjectPath = async () => {
   } catch (e) {
     console.error('Failed to select path:', e);
   }
+};
+
+// 批量添加项目相关方法
+const addToPendingList = () => {
+  if (!newProjectPath.value) return;
+
+  // 如果没有输入备注名称，使用文件夹名
+  let projectName = newProjectName.value.trim();
+  if (!projectName) {
+    const parts = newProjectPath.value.split('/');
+    projectName = parts[parts.length - 1] || parts[parts.length - 2] || '新项目';
+  }
+
+  // 检查是否已存在
+  const exists = pendingProjects.value.some(p => p.path === newProjectPath.value);
+  if (exists) {
+    alert('该项目已添加到列表中');
+    return;
+  }
+
+  pendingProjects.value.push({
+    name: projectName,
+    path: newProjectPath.value
+  });
+
+  // 清空输入，准备添加下一个
+  newProjectName.value = '';
+  newProjectPath.value = '';
+};
+
+const removeFromPending = (index: number) => {
+  pendingProjects.value.splice(index, 1);
+};
+
+const closeAddProjectDialog = () => {
+  showAddProject.value = false;
+  pendingProjects.value = [];
+  newProjectName.value = '';
+  newProjectPath.value = '';
+};
+
+const confirmAddProjects = async () => {
+  if (pendingProjects.value.length === 0) return;
+
+  // 批量添加项目
+  for (const item of pendingProjects.value) {
+    const project: Project = {
+      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+      name: item.name,
+      path: item.path
+    };
+    projects.value.push(project);
+  }
+
+  saveProjects();
+
+  // 切换到最后一个添加的项目
+  const lastProject = projects.value[projects.value.length - 1];
+  await switchProject(lastProject);
+
+  // 关闭对话框并清空
+  showAddProject.value = false;
+  pendingProjects.value = [];
+  newProjectName.value = '';
+  newProjectPath.value = '';
 };
 
 const addProject = async () => {
