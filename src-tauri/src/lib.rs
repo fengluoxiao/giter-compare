@@ -606,9 +606,9 @@ async fn start_file_watcher(
     let repo_path_clone = repo_path.clone();
 
     // 创建新的监控器
-    let mut debouncer = new_debouncer(
+    let debouncer_result = new_debouncer(
         Duration::from_millis(300),
-        move |result: Result<Vec<_>, _>| {
+        move |result: Result<Vec<notify_debouncer_mini::DebouncedEvent>, notify::Error>| {
             match result {
                 Ok(events) => {
                     println!("File events detected: {} events", events.len());
@@ -632,8 +632,9 @@ async fn start_file_watcher(
                 }
             }
         },
-    )
-    .map_err(|e| format!("Failed to create debouncer: {}", e))?;
+    );
+    
+    let mut debouncer = debouncer_result.map_err(|e| format!("Failed to create debouncer: {}", e))?;
 
     // 监控整个仓库目录
     debouncer
