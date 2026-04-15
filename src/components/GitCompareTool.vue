@@ -119,7 +119,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted, onUnmounted, computed } from 'vue';
+import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
@@ -186,6 +186,12 @@ const showCompareFile = ref(false);
 const showTextCompare = ref(false);
 const showAddProject = ref(false);
 const showPluginManager = ref(false);
+
+// 调试：监听 showPluginManager 变化
+watch(showPluginManager, (newVal, oldVal) => {
+  console.log('showPluginManager changed:', oldVal, '->', newVal);
+  console.trace('Stack trace:');
+});
 
 // 文件和数据状态
 const fileTree = ref<FileNode[]>([]);

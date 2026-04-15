@@ -28,7 +28,6 @@ defineProps<{
 .diff-lines {
   display: flex;
   flex-direction: column;
-  min-width: fit-content;
 }
 
 .diff-line {
@@ -74,6 +73,8 @@ defineProps<{
   flex: 1;
   padding: 0 12px;
   white-space: pre;
+  overflow: hidden;
+  text-overflow: ellipsis;
   color: var(--text-primary);
 }
 
