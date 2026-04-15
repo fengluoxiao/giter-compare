@@ -819,6 +819,11 @@ const buildFileTreeRecursive = async (
         console.error(`Failed to read subdirectory: ${relativePath}`, e);
       }
 
+      // 如果不显示所有文件，且子目录中没有变更文件，则跳过此目录
+      if (!showAllFiles.value && children.length === 0) {
+        continue;
+      }
+
       root.push({
         name: entry.name,
         path: relativePath,
@@ -829,6 +834,12 @@ const buildFileTreeRecursive = async (
     } else {
       // 检查是否有 Git 更改状态
       const status = changeMap.get(relativePath);
+
+      // 如果不显示所有文件，且文件没有变更，则跳过
+      if (!showAllFiles.value && !status) {
+        continue;
+      }
+
       root.push({
         name: entry.name,
         path: relativePath,
