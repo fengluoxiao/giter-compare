@@ -207,12 +207,54 @@ body {
   white-space: nowrap;
 }
 
-.btn-delete {
-  opacity: 0;
-  transition: opacity 0.2s;
+/* 项目头部按钮 */
+.project-header-buttons {
+  display: flex;
+  gap: 4px;
+}
+
+.project-header-buttons .btn-icon {
   width: 24px;
   height: 24px;
-  font-size: 12px;
+  padding: 0;
+  background-color: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.project-header-buttons .btn-icon:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--accent-color);
+  color: var(--text-primary);
+}
+
+.project-header-buttons .btn-add:hover {
+  background-color: var(--accent-color);
+  border-color: var(--accent-color);
+  color: white;
+}
+
+/* 项目项删除按钮 */
+.btn-delete {
+  opacity: 0;
+  transition: all 0.2s;
+  width: 20px;
+  height: 20px;
+  padding: 0;
+  background-color: transparent;
+  border: none;
+  border-radius: 3px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
 .project-item:hover .btn-delete {
@@ -220,14 +262,8 @@ body {
 }
 
 .btn-delete:hover {
-  background-color: rgba(255, 0, 0, 0.2);
-  color: #ff4444;
-}
-
-/* 项目头部按钮 */
-.project-header-buttons {
-  display: flex;
-  gap: 4px;
+  background-color: rgba(255, 67, 54, 0.15);
+  color: #ff4436;
 }
 
 /* 拖拽调整宽度的手柄 */

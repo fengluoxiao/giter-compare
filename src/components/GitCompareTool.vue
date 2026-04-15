@@ -58,15 +58,22 @@
         <div class="project-header">
           <h3 v-show="!isProjectSidebarCollapsed">项目列表</h3>
           <div class="project-header-buttons">
-            <button class="btn btn-icon" @click="showAddProjectDialog" title="添加项目">
-              ➕
+            <button class="btn btn-icon btn-add" @click="showAddProjectDialog" title="添加项目">
+              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+              </svg>
             </button>
-            <button 
-              class="btn btn-icon btn-collapse" 
+            <button
+              class="btn btn-icon btn-collapse"
               @click="toggleProjectSidebar"
               :title="isProjectSidebarCollapsed ? '展开' : '折叠'"
             >
-              {{ isProjectSidebarCollapsed ? '▶' : '◀' }}
+              <svg v-if="isProjectSidebarCollapsed" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
+              </svg>
+              <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                <path d="M15.41 7.41L10.83 12l4.58 4.59L14 18l-6-6 6-6 1.41 1.41z"/>
+              </svg>
             </button>
           </div>
         </div>
@@ -80,12 +87,14 @@
           >
             <span class="project-icon">📁</span>
             <span class="project-name">{{ project.name }}</span>
-            <button 
-              class="btn btn-icon btn-delete" 
+            <button
+              class="btn btn-icon btn-delete"
               @click.stop="removeProject(project.id)"
               title="删除项目"
             >
-              ✕
+              <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+              </svg>
             </button>
           </div>
           <div v-if="projects.length === 0" class="empty-state">
