@@ -21,7 +21,7 @@
             <span class="pane-title">HEAD</span>
           </div>
           <div class="code-content" ref="leftCodeContent" @scroll="syncScroll('left')">
-            <DiffLines :lines="leftLines" />
+            <DiffLines :lines="rightLines" />
           </div>
         </div>
         <div class="diff-divider"></div>
@@ -30,12 +30,12 @@
             <span class="pane-title">{{ viewMode === 'working' ? '工作区' : '暂存区' }}</span>
           </div>
           <div class="code-content" ref="rightCodeContent" @scroll="syncScroll('right')">
-            <DiffLines :lines="rightLines" />
+            <DiffLines :lines="leftLines" />
           </div>
         </div>
         <!-- Minimap -->
         <Minimap
-          :lines="leftLines"
+          :lines="rightLines"
           :scroll-top="leftScrollTop"
           :container-height="codeContainerHeight"
           :content-height="codeContentHeight"
