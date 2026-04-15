@@ -13,10 +13,10 @@
         @click="$emit('toggle', node)"
       >
         <span class="tree-arrow">
-          <svg v-if="node.expanded" viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <svg v-if="node.expanded" viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
             <path d="M7 10l5 5 5-5z"/>
           </svg>
-          <svg v-else viewBox="0 0 24 24" width="18" height="18" fill="currentColor">
+          <svg v-else viewBox="0 0 24 24" width="24" height="24" fill="currentColor">
             <path d="M10 17l5-5-5-5v10z"/>
           </svg>
         </span>

@@ -28,6 +28,7 @@ defineProps<{
 .diff-lines {
   display: flex;
   flex-direction: column;
+  min-width: fit-content;
 }
 
 .diff-line {

@@ -563,9 +563,13 @@ const selectProjectPath = async () => {
       }
 
       let projectName = newProjectName.value.trim();
+      console.log('Input projectName:', JSON.stringify(newProjectName.value), 'trimmed:', JSON.stringify(projectName));
       if (!projectName) {
         const parts = selected.split(/[\\/]/);
         projectName = parts[parts.length - 1] || parts[parts.length - 2] || '新项目';
+        console.log('Using folder name:', projectName);
+      } else {
+        console.log('Using input name:', projectName);
       }
 
       pendingProjects.value.push({ name: projectName, path: selected });
@@ -615,6 +619,7 @@ const confirmAddProjects = async () => {
   if (pendingProjects.value.length === 0) return;
 
   for (const item of pendingProjects.value) {
+    console.log('Adding project:', item.name, item.path);
     const project: Project = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
       name: item.name,

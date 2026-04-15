@@ -33,7 +33,7 @@
         class="project-item"
         :class="{ active: currentProjectId === project.id }"
         @click="$emit('switch-project', project)"
-        :title="project.path"
+        :title="(project.name ? project.name + '\n' : '') + project.path"
       >
         <span class="project-icon">📁</span>
         <span class="project-name">{{ project.name || getFolderName(project.path) }}</span>
