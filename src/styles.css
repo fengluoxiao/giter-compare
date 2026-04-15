@@ -295,14 +295,18 @@ body {
 }
 
 /* 折叠状态的侧边栏 */
-.project-sidebar.collapsed,
+.project-sidebar.collapsed {
+  min-width: 40px;
+  max-width: 40px;
+}
+
 .sidebar.collapsed {
   min-width: 40px;
   max-width: 40px;
 }
 
-.project-sidebar.collapsed .project-header,
-.sidebar.collapsed .sidebar-header {
+/* 项目侧边栏折叠样式 */
+.project-sidebar.collapsed .project-header {
   padding: 8px 4px;
   justify-content: center;
   flex-direction: column;
@@ -314,16 +318,32 @@ body {
   gap: 8px;
 }
 
+.project-sidebar.collapsed .btn-icon {
+  width: 28px;
+  height: 28px;
+}
+
+/* 文件树侧边栏折叠样式 */
+.sidebar.collapsed .sidebar-header {
+  padding: 8px 4px;
+}
+
 .sidebar.collapsed .sidebar-header-title {
   flex-direction: column;
   gap: 8px;
   margin-bottom: 0;
+  align-items: center;
 }
 
-.project-sidebar.collapsed .btn-icon,
 .sidebar.collapsed .btn-icon {
   width: 28px;
   height: 28px;
+}
+
+/* 确保折叠时隐藏的内容不会显示 */
+.sidebar.collapsed .view-toggle,
+.sidebar.collapsed .filter-tabs {
+  display: none !important;
 }
 
 /* 侧边栏头部 */
