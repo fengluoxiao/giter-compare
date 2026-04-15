@@ -20,9 +20,9 @@ jobs:
         node-version: '20'
         
     - name: Setup Rust
-      uses: dtolnay/rust-action@stable
+      uses: actions-rust-lang/setup-rust-toolchain@v1
       with:
-        targets: x86_64-pc-windows-msvc
+        target: x86_64-pc-windows-msvc
         
     - name: Install dependencies
       run: npm install
