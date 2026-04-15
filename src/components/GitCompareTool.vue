@@ -186,6 +186,14 @@
                 <DiffLines :lines="rightLines" />
               </div>
             </div>
+            <!-- Minimap -->
+            <Minimap
+              :lines="leftLines"
+              :scroll-top="leftScrollTop"
+              :container-height="codeContainerHeight"
+              :content-height="codeContentHeight"
+              @jump="handleMinimapJump"
+            />
           </template>
         </div>
         
@@ -303,6 +311,7 @@ import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
 import FileTree from './FileTree.vue';
 import DiffLines from './DiffLines.vue';
+import Minimap from './Minimap.vue';
 
 interface FileNode {
   name: string;
@@ -386,6 +395,11 @@ const isResizingFile = ref(false);
 const leftCodeContent = ref<HTMLElement | null>(null);
 const rightCodeContent = ref<HTMLElement | null>(null);
 let isSyncing = false;
+
+// Minimap 相关
+const leftScrollTop = ref(0);
+const codeContainerHeight = ref(0);
+const codeContentHeight = ref(0);
 
 const compareOldPath = ref('');
 const compareNewPath = ref('');
@@ -864,6 +878,13 @@ const syncScroll = (source: 'left' | 'right') => {
     targetEl.scrollTop = sourceEl.scrollTop;
   }
 
+  // 更新 minimap 的 scrollTop
+  if (sourceEl) {
+    leftScrollTop.value = sourceEl.scrollTop;
+    codeContainerHeight.value = sourceEl.clientHeight;
+    codeContentHeight.value = sourceEl.scrollHeight;
+  }
+
   // 使用 requestAnimationFrame 确保同步
   requestAnimationFrame(() => {
     isSyncing = false;
@@ -877,6 +898,23 @@ const refresh = () => {
       selectFile(currentFile.value.path);
     }
   }
+};
+
+// Minimap 跳转处理
+const handleMinimapJump = (lineIndex: number) => {
+  if (!leftCodeContent.value) return;
+  
+  // 计算目标滚动位置
+  const lineHeight = 24; // 每行高度
+  const targetScrollTop = lineIndex * lineHeight;
+  
+  leftCodeContent.value.scrollTop = targetScrollTop;
+  if (rightCodeContent.value) {
+    rightCodeContent.value.scrollTop = targetScrollTop;
+  }
+  
+  // 更新 minimap 状态
+  leftScrollTop.value = targetScrollTop;
 };
 
 const selectFile = async (path: string) => {
