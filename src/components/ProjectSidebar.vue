@@ -33,9 +33,10 @@
         class="project-item"
         :class="{ active: currentProjectId === project.id }"
         @click="$emit('switch-project', project)"
+        :title="project.path"
       >
         <span class="project-icon">📁</span>
-        <span class="project-name">{{ project.name }}</span>
+        <span class="project-name">{{ project.name || getFolderName(project.path) }}</span>
         <button
           class="btn btn-icon btn-delete"
           @click.stop="$emit('remove-project', project.id)"
@@ -80,6 +81,12 @@ defineEmits<{
   'remove-project': [projectId: string];
   'start-resize': [event: MouseEvent];
 }>();
+
+// 从路径获取文件夹名称
+const getFolderName = (path: string): string => {
+  const parts = path.split('/');
+  return parts[parts.length - 1] || parts[parts.length - 2] || '新项目';
+};
 </script>
 
 <style scoped>
