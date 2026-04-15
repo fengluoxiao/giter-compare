@@ -727,6 +727,58 @@ async fn stop_file_watcher(
     Ok(())
 }
 
+// 文件系统命令 - 用于插件管理
+#[tauri::command]
+fn get_home_dir() -> Result<String, String> {
+    dirs::home_dir()
+        .ok_or_else(|| "Could not get home directory".to_string())
+        .map(|p| p.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+fn read_file(path: String) -> Result<String, String> {
+    std::fs::read_to_string(&path).map_err(|e| format!("Failed to read file: {}", e))
+}
+
+#[tauri::command]
+fn write_file(path: String, content: String) -> Result<(), String> {
+    // 确保父目录存在
+    if let Some(parent) = std::path::Path::new(&path).parent() {
+        std::fs::create_dir_all(parent).map_err(|e| format!("Failed to create directory: {}", e))?;
+    }
+    std::fs::write(&path, content).map_err(|e| format!("Failed to write file: {}", e))
+}
+
+#[tauri::command]
+fn copy_dir(from: String, to: String) -> Result<(), String> {
+    use std::fs;
+    use std::path::Path;
+
+    fn copy_recursive(from: &Path, to: &Path) -> Result<(), String> {
+        fs::create_dir_all(to).map_err(|e| format!("Failed to create directory: {}", e))?;
+
+        for entry in fs::read_dir(from).map_err(|e| format!("Failed to read directory: {}", e))? {
+            let entry = entry.map_err(|e| format!("Failed to read entry: {}", e))?;
+            let from_path = entry.path();
+            let to_path = to.join(entry.file_name());
+
+            if from_path.is_dir() {
+                copy_recursive(&from_path, &to_path)?;
+            } else {
+                fs::copy(&from_path, &to_path).map_err(|e| format!("Failed to copy file: {}", e))?;
+            }
+        }
+        Ok(())
+    }
+
+    copy_recursive(Path::new(&from), Path::new(&to))
+}
+
+#[tauri::command]
+fn remove_dir(path: String) -> Result<(), String> {
+    std::fs::remove_dir_all(&path).map_err(|e| format!("Failed to remove directory: {}", e))
+}
+
 pub fn run() {
     let file_watcher = Arc::new(Mutex::new(FileWatcher::new()));
     
@@ -747,7 +799,12 @@ pub fn run() {
             get_all_tracked_files,
             read_directory,
             start_file_watcher,
-            stop_file_watcher
+            stop_file_watcher,
+            get_home_dir,
+            read_file,
+            write_file,
+            copy_dir,
+            remove_dir
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

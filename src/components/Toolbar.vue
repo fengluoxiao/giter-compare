@@ -14,6 +14,9 @@
       <span class="path-display">{{ currentPath || '未选择文件夹' }}</span>
     </div>
     <div class="toolbar-right">
+      <button class="btn btn-secondary" @click="$emit('manage-plugins')" title="语法高亮插件">
+        🔌 插件
+      </button>
       <button class="btn btn-secondary" @click="$emit('toggle-theme')" title="切换主题">
         {{ theme === 'dark' ? '☀️ 浅色' : '🌙 深色' }}
       </button>
@@ -45,6 +48,7 @@ defineEmits<{
   'navigate-prev': [];
   'navigate-next': [];
   'refresh': [];
+  'manage-plugins': [];
 }>();
 </script>
 

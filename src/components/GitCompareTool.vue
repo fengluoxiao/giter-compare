@@ -12,6 +12,7 @@
       @navigate-prev="navigatePrev"
       @navigate-next="navigateNext"
       @refresh="refresh"
+      @manage-plugins="showPluginManager = true"
     />
 
     <!-- 标签栏 -->
@@ -67,6 +68,7 @@
         :is-binary="isBinary"
         :diff-stats="diffStats"
         :view-mode="viewMode"
+        :theme="theme"
         @scroll="handleScroll"
       />
     </div>
@@ -106,6 +108,13 @@
       @save-name="savePendingName"
       @cancel-edit="cancelEditPendingName"
     />
+
+    <!-- 插件管理对话框 -->
+    <PluginManagerDialog
+      :open="showPluginManager"
+      @close="showPluginManager = false"
+      @plugins-changed="onPluginsChanged"
+    />
   </div>
 </template>
 
@@ -119,7 +128,7 @@ import ProjectSidebar from './ProjectSidebar.vue';
 import FileTreeSidebar from './FileTreeSidebar.vue';
 import DiffViewer from './DiffViewer.vue';
 import TabBar, { type Tab } from './TabBar.vue';
-import { FileCompareDialog, TextCompareDialog, AddProjectDialog } from './dialogs';
+import { FileCompareDialog, TextCompareDialog, AddProjectDialog, PluginManagerDialog } from './dialogs';
 
 interface FileNode {
   name: string;
@@ -176,6 +185,7 @@ const showAllFiles = ref(true);
 const showCompareFile = ref(false);
 const showTextCompare = ref(false);
 const showAddProject = ref(false);
+const showPluginManager = ref(false);
 
 // 文件和数据状态
 const fileTree = ref<FileNode[]>([]);
@@ -850,6 +860,14 @@ const loadStagedFiles = async () => {
   } catch (e) {
     console.error('Failed to load staged files:', e);
     stagedFiles.value = [];
+  }
+};
+
+// 插件变更回调
+const onPluginsChanged = () => {
+  // 重新加载当前文件以应用新的语法高亮
+  if (currentFile.value) {
+    loadFileContent(currentFile.value);
   }
 };
 

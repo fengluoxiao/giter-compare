@@ -1,5 +1,5 @@
 <template>
-  <div class="file-tree">
+  <div class="file-tree" style="min-width: fit-content;">
     <template v-for="node in nodes" :key="node.path">
       <div
         v-if="node.type === 'directory'"

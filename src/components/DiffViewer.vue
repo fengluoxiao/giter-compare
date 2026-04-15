@@ -20,8 +20,13 @@
           <div class="pane-header">
             <span class="pane-title">HEAD</span>
           </div>
-          <div class="code-content" ref="leftCodeContent" @scroll="syncScroll('left')">
-            <DiffLines :lines="rightLines" />
+          <div class="code-content">
+            <CodeViewer 
+              :content="oldContent" 
+              :filename="currentFile.path"
+              :theme="theme"
+              read-only
+            />
           </div>
         </div>
         <div class="diff-divider"></div>
@@ -29,18 +34,15 @@
           <div class="pane-header">
             <span class="pane-title">{{ viewMode === 'working' ? '工作区' : '暂存区' }}</span>
           </div>
-          <div class="code-content" ref="rightCodeContent" @scroll="syncScroll('right')">
-            <DiffLines :lines="leftLines" />
+          <div class="code-content">
+            <CodeViewer 
+              :content="newContent" 
+              :filename="currentFile.path"
+              :theme="theme"
+              read-only
+            />
           </div>
         </div>
-        <!-- Minimap -->
-        <Minimap
-          :lines="leftLines"
-          :scroll-top="leftScrollTop"
-          :container-height="codeContainerHeight"
-          :content-height="codeContentHeight"
-          @jump="handleMinimapJump"
-        />
       </template>
     </div>
 
@@ -57,9 +59,8 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue';
-import DiffLines from './DiffLines.vue';
-import Minimap from './Minimap.vue';
+import { computed } from 'vue';
+import CodeViewer from './CodeViewer.vue';
 
 interface FileNode {
   name: string;
@@ -90,83 +91,16 @@ const props = defineProps<{
   isBinary: boolean;
   diffStats: DiffStats | null;
   viewMode: 'working' | 'staged';
+  theme?: 'light' | 'dark';
 }>();
 
-const emit = defineEmits<{
-  'scroll': [scrollTop: number];
-}>();
+// 将 DiffLine 数组转换为文本内容
+const oldContent = computed(() => {
+  return props.rightLines.map(line => line.content).join('\n');
+});
 
-// 代码内容区域 refs，用于同步滚动
-const leftCodeContent = ref<HTMLElement | null>(null);
-const rightCodeContent = ref<HTMLElement | null>(null);
-let isSyncing = false;
-
-// Minimap 相关
-const leftScrollTop = ref(0);
-const codeContainerHeight = ref(0);
-const codeContentHeight = ref(0);
-
-// 同步滚动函数
-const syncScroll = (source: 'left' | 'right') => {
-  if (isSyncing) return;
-  isSyncing = true;
-
-  const sourceEl = source === 'left' ? leftCodeContent.value : rightCodeContent.value;
-  const targetEl = source === 'left' ? rightCodeContent.value : leftCodeContent.value;
-
-  if (sourceEl && targetEl) {
-    // 同步纵向滚动
-    targetEl.scrollTop = sourceEl.scrollTop;
-    // 同步横向滚动
-    targetEl.scrollLeft = sourceEl.scrollLeft;
-  }
-
-  // 更新 minimap 的 scrollTop
-  if (sourceEl) {
-    leftScrollTop.value = sourceEl.scrollTop;
-    codeContainerHeight.value = sourceEl.clientHeight;
-    codeContentHeight.value = sourceEl.scrollHeight;
-    emit('scroll', sourceEl.scrollTop);
-  }
-
-  // 使用 requestAnimationFrame 确保同步
-  requestAnimationFrame(() => {
-    isSyncing = false;
-  });
-};
-
-// Minimap 跳转处理
-const handleMinimapJump = (lineIndex: number) => {
-  if (!leftCodeContent.value) return;
-
-  // 计算目标滚动位置
-  const lineHeight = 24; // 每行高度
-  const targetScrollTop = lineIndex * lineHeight;
-
-  leftCodeContent.value.scrollTop = targetScrollTop;
-  if (rightCodeContent.value) {
-    rightCodeContent.value.scrollTop = targetScrollTop;
-  }
-
-  // 更新 minimap 状态
-  leftScrollTop.value = targetScrollTop;
-};
-
-// 监听线条变化，更新 minimap 尺寸
-watch(() => props.leftLines, () => {
-  nextTick(() => {
-    if (leftCodeContent.value) {
-      codeContainerHeight.value = leftCodeContent.value.clientHeight;
-      codeContentHeight.value = leftCodeContent.value.scrollHeight;
-    }
-  });
-}, { deep: true });
-
-// 暴露方法给父组件
-defineExpose({
-  leftCodeContent,
-  rightCodeContent,
-  syncScroll
+const newContent = computed(() => {
+  return props.leftLines.map(line => line.content).join('\n');
 });
 </script>
 
@@ -241,10 +175,7 @@ defineExpose({
 
 .code-content {
   flex: 1;
-  overflow: auto;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
-  font-size: 13px;
-  line-height: 24px;
+  overflow: hidden;
 }
 
 .diff-divider {

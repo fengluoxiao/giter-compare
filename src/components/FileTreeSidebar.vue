@@ -228,7 +228,7 @@ defineEmits<{
 
 .file-list {
   flex: 1;
-  overflow-y: auto;
+  overflow: auto;
   padding: 8px;
 }
 
