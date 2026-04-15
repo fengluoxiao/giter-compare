@@ -250,6 +250,11 @@ fn parse_diff(diff_text: &str, _base_path: &str) -> Result<FileDiff, String> {
             continue;
         }
 
+        // 跳过 "No newline at end of file" 提示
+        if line.contains("No newline at end of file") {
+            continue;
+        }
+
         if line.starts_with("--- ") {
             old_path = line[4..].to_string();
             if old_path.starts_with("a/") {
@@ -471,6 +476,19 @@ fn diff_without_git(old_content: &str, new_content: &str) -> FileDiff {
 }
 
 fn compare_strings_impl(old_content: &str, new_content: &str) -> Result<FileDiff, String> {
+    // 如果内容完全相同，直接返回无差异结果
+    if old_content == new_content {
+        let lines: Vec<String> = old_content.lines().map(|s| s.to_string()).collect();
+        return Ok(FileDiff {
+            old_path: "old".to_string(),
+            new_path: "new".to_string(),
+            hunks: vec![],
+            old_content: lines.clone(),
+            new_content: lines,
+            is_binary: false,
+        });
+    }
+
     let temp_dir = std::env::temp_dir();
     let old_file_path = temp_dir.join("git_compare_old.tmp");
     let new_file_path = temp_dir.join("git_compare_new.tmp");
