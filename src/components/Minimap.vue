@@ -1,5 +1,12 @@
 <template>
-  <div class="minimap" ref="minimapRef" @click="handleClick">
+  <div
+    class="minimap"
+    ref="minimapRef"
+    @mousedown="handleMouseDown"
+    @mousemove="handleMouseMove"
+    @mouseup="handleMouseUp"
+    @mouseleave="handleMouseUp"
+  >
     <canvas ref="canvasRef" class="minimap-canvas"></canvas>
     <div class="minimap-viewport" :style="viewportStyle"></div>
   </div>
@@ -28,6 +35,9 @@ const emit = defineEmits<{
 
 const minimapRef = ref<HTMLElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
+
+// 拖动状态
+const isDragging = ref(false);
 
 // 颜色配置 - 使用更高的对比度
 const colors = {
@@ -101,16 +111,33 @@ const drawMinimap = () => {
   });
 };
 
-// 处理点击事件
-const handleClick = (e: MouseEvent) => {
+// 计算并跳转到指定位置
+const jumpToPosition = (clientY: number) => {
   if (!minimapRef.value || props.lines.length === 0) return;
 
   const rect = minimapRef.value.getBoundingClientRect();
-  const clickY = e.clientY - rect.top;
+  const clickY = clientY - rect.top;
   const ratio = clickY / rect.height;
   const lineIndex = Math.floor(ratio * props.lines.length);
 
   emit('jump', Math.max(0, Math.min(lineIndex, props.lines.length - 1)));
+};
+
+// 处理鼠标按下事件
+const handleMouseDown = (e: MouseEvent) => {
+  isDragging.value = true;
+  jumpToPosition(e.clientY);
+};
+
+// 处理鼠标移动事件
+const handleMouseMove = (e: MouseEvent) => {
+  if (!isDragging.value) return;
+  jumpToPosition(e.clientY);
+};
+
+// 处理鼠标释放事件
+const handleMouseUp = () => {
+  isDragging.value = false;
 };
 
 // 监听线条变化，重新绘制
