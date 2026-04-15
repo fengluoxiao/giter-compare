@@ -288,8 +288,8 @@ fn parse_diff(diff_text: &str, _base_path: &str) -> Result<FileDiff, String> {
     let mut old_line_num = 0;
     let mut new_line_num = 0;
     
-    // 用于存储待处理的删除行
-    let mut pending_removed: Option<(DiffLine, usize)> = None;
+    // 使用队列存储待处理的删除行（支持多行修改）
+    let mut pending_removed: Vec<(DiffLine, usize)> = Vec::new();
 
     for line in diff_text.lines() {
         if line.contains("Binary files") || line.contains("GIT binary patch") {
@@ -313,8 +313,8 @@ fn parse_diff(diff_text: &str, _base_path: &str) -> Result<FileDiff, String> {
                 new_path = new_path[2..].to_string();
             }
         } else if line.starts_with("@@") {
-            // 处理待删除的行
-            if let Some((removed_line, _)) = pending_removed.take() {
+            // 处理所有待删除的行
+            for (removed_line, _) in pending_removed.drain(..) {
                 if let Some(ref mut hunk) = current_hunk {
                     hunk.lines.push(removed_line);
                 }
@@ -364,26 +364,18 @@ fn parse_diff(diff_text: &str, _base_path: &str) -> Result<FileDiff, String> {
 
             match change_type {
                 "removed" => {
-                    // 如果有待处理的删除行，先保存它
-                    if let Some((removed_line, _removed_num)) = pending_removed.take() {
-                        if let Some(ref mut hunk) = current_hunk {
-                            hunk.lines.push(removed_line);
-                        }
-                        old_content.push(content.clone());
-                    }
-                    
                     let diff_line = DiffLine {
                         line_number: old_line_num,
-                        content,
+                        content: content.clone(),
                         change_type: "removed".to_string(),
                     };
-                    pending_removed = Some((diff_line, old_line_num));
+                    pending_removed.push((diff_line, old_line_num));
                     old_line_num += 1;
                 }
                 "added" => {
                     // 检查是否有待处理的删除行
-                    if let Some((removed_line, removed_num)) = pending_removed.take() {
-                        // 将删除和添加合并为修改
+                    if let Some((removed_line, removed_num)) = pending_removed.pop() {
+                        // 配对删除和添加
                         // 先添加删除行（旧内容）
                         let removed_content = removed_line.content.clone();
                         let removed_diff_line = DiffLine {
@@ -424,12 +416,11 @@ fn parse_diff(diff_text: &str, _base_path: &str) -> Result<FileDiff, String> {
                     }
                 }
                 _ => {
-                    // 处理待删除的行
-                    if let Some((removed_line, _)) = pending_removed.take() {
+                    // 遇到未修改行，先处理所有待删除的行
+                    for (removed_line, _) in pending_removed.drain(..) {
                         if let Some(ref mut hunk) = current_hunk {
                             hunk.lines.push(removed_line);
                         }
-                        old_content.push(content.clone());
                     }
                     
                     let diff_line = DiffLine {
@@ -449,8 +440,8 @@ fn parse_diff(diff_text: &str, _base_path: &str) -> Result<FileDiff, String> {
         }
     }
 
-    // 处理最后可能待删除的行
-    if let Some((removed_line, _)) = pending_removed.take() {
+    // 处理最后剩余的待删除行
+    for (removed_line, _) in pending_removed.drain(..) {
         if let Some(ref mut hunk) = current_hunk {
             hunk.lines.push(removed_line);
         }
