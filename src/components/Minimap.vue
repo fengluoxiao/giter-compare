@@ -29,12 +29,13 @@ const emit = defineEmits<{
 const minimapRef = ref<HTMLElement | null>(null);
 const canvasRef = ref<HTMLCanvasElement | null>(null);
 
-// 颜色配置
+// 颜色配置 - 使用更高的对比度
 const colors = {
-  normal: 'rgba(128, 128, 128, 0.2)',
-  added: 'rgba(76, 175, 80, 0.8)',
-  removed: 'rgba(244, 67, 54, 0.8)',
-  changed: 'rgba(33, 150, 243, 0.8)',
+  normal: 'rgba(128, 128, 128, 0.15)',
+  added: 'rgba(76, 175, 80, 0.9)',
+  removed: 'rgba(244, 67, 54, 0.9)',
+  changed: 'rgba(33, 150, 243, 0.9)',
+  empty: 'rgba(128, 128, 128, 0.05)',
 };
 
 // 视口指示器样式
@@ -62,6 +63,8 @@ const getLineColor = (line: DiffLine): string => {
       return colors.removed;
     case 'changed':
       return colors.changed;
+    case 'empty':
+      return colors.empty;
     default:
       return colors.normal;
   }
