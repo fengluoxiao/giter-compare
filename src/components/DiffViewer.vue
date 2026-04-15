@@ -35,7 +35,7 @@
         </div>
         <!-- Minimap -->
         <Minimap
-          :lines="rightLines"
+          :lines="leftLines"
           :scroll-top="leftScrollTop"
           :container-height="codeContainerHeight"
           :content-height="codeContentHeight"
