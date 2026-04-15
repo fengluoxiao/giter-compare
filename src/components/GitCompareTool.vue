@@ -463,6 +463,9 @@ onMounted(async () => {
   const savedTheme = localStorage.getItem('theme');
   if (savedTheme) {
     theme.value = savedTheme;
+  } else {
+    // 默认浅色模式
+    theme.value = 'light';
   }
 
   const savedShowAll = localStorage.getItem('showAllFiles');
