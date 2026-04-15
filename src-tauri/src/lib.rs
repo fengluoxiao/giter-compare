@@ -905,7 +905,6 @@ async fn import_vscode_plugin(
 #[tauri::command]
 fn get_installed_plugins(app_handle: tauri::AppHandle) -> Result<Vec<PluginInfo>, String> {
     use std::fs;
-    use std::path::Path;
 
     let app_data_dir = app_handle.path().app_data_dir()
         .map_err(|e| format!("Failed to get app data dir: {}", e))?;
