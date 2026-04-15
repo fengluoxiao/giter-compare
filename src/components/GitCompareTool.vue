@@ -848,10 +848,21 @@ const loadStagedFiles = async () => {
   }
 };
 
-// 刷新
+// 轻量级刷新 - 只更新Git状态，不重建文件树
 const refresh = async () => {
-  if (currentPath.value) {
-    await loadFileTree(currentPath.value);
+  if (!currentPath.value) return;
+
+  try {
+    // 只获取Git状态变化，不重建整个文件树
+    let changes: GitStatus[] = [];
+    try {
+      changes = await invoke<GitStatus[]>('get_working_tree_changes', { repoPath: currentPath.value });
+    } catch (e) {
+      console.log('Not a git repository or error getting changes');
+    }
+
+    // 更新文件树中的状态（保持展开状态）
+    updateFileTreeStatus(fileTree.value, changes);
 
     // 更新所有标签页的文件状态
     for (const tab of tabs.value) {
@@ -869,14 +880,33 @@ const refresh = async () => {
         rightLines.value = activeTab.rightLines;
         isBinary.value = activeTab.isBinary;
         diffStats.value = activeTab.diffStats;
-        currentFile.value = {
-          name: activeTab.name,
-          path: activeTab.path,
-          type: 'file',
-          status: activeTab.status || '',
-          children: []
-        };
+        // 更新当前文件的状态
+        if (currentFile.value) {
+          const newStatus = changes.find(c => c.path === activeTab.path)?.status;
+          if (newStatus) {
+            currentFile.value.status = newStatus;
+          }
+        }
       }
+    }
+  } catch (e) {
+    console.error('Failed to refresh:', e);
+  }
+};
+
+// 更新文件树状态（不重建树结构）
+const updateFileTreeStatus = (nodes: FileNode[], changes: GitStatus[]) => {
+  for (const node of nodes) {
+    if (node.type === 'file') {
+      const change = changes.find(c => c.path === node.path);
+      if (change) {
+        node.status = change.status;
+      } else {
+        node.status = undefined;
+      }
+    }
+    if (node.children && node.children.length > 0) {
+      updateFileTreeStatus(node.children, changes);
     }
   }
 };
