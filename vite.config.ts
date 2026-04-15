@@ -17,4 +17,17 @@ export default defineConfig(async () => ({
       ignored: ["**/src-tauri/**"],
     },
   },
+  optimizeDeps: {
+    include: [
+      'shiki',
+      'shiki/core',
+      'shiki/engine/oniguruma',
+      'shiki/wasm',
+    ],
+  },
+  build: {
+    commonjsOptions: {
+      transformMixedEsModules: true,
+    },
+  },
 }));

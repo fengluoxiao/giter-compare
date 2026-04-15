@@ -21,7 +21,11 @@
             <span class="pane-title">HEAD</span>
           </div>
           <div class="code-content" ref="leftCodeContent" @scroll="syncScroll('left')">
-            <DiffLines :lines="rightLines" />
+            <ShikiDiffLines 
+              :lines="rightLines" 
+              :filename="currentFile?.path || ''"
+              :theme="theme || 'light'"
+            />
           </div>
         </div>
         <div class="diff-divider"></div>
@@ -30,12 +34,17 @@
             <span class="pane-title">{{ viewMode === 'working' ? '工作区' : '暂存区' }}</span>
           </div>
           <div class="code-content" ref="rightCodeContent" @scroll="syncScroll('right')">
-            <DiffLines :lines="leftLines" />
+            <ShikiDiffLines 
+              :lines="leftLines" 
+              :filename="currentFile?.path || ''"
+              :theme="theme || 'light'"
+            />
           </div>
         </div>
-        <!-- Minimap -->
+        <!-- Minimap - 合并显示左右两侧的更改 -->
         <Minimap
-          :lines="leftLines"
+          :left-lines="leftLines"
+          :right-lines="rightLines"
           :scroll-top="leftScrollTop"
           :container-height="codeContainerHeight"
           :content-height="codeContentHeight"
@@ -58,7 +67,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick } from 'vue';
-import DiffLines from './DiffLines.vue';
+import ShikiDiffLines from './ShikiDiffLines.vue';
 import Minimap from './Minimap.vue';
 
 interface FileNode {
@@ -90,6 +99,7 @@ const props = defineProps<{
   isBinary: boolean;
   diffStats: DiffStats | null;
   viewMode: 'working' | 'staged';
+  theme?: 'light' | 'dark';
 }>();
 
 const emit = defineEmits<{
@@ -115,7 +125,10 @@ const syncScroll = (source: 'left' | 'right') => {
   const targetEl = source === 'left' ? rightCodeContent.value : leftCodeContent.value;
 
   if (sourceEl && targetEl) {
+    // 同步纵向滚动
     targetEl.scrollTop = sourceEl.scrollTop;
+    // 同步横向滚动
+    targetEl.scrollLeft = sourceEl.scrollLeft;
   }
 
   // 更新 minimap 的 scrollTop
@@ -134,11 +147,11 @@ const syncScroll = (source: 'left' | 'right') => {
 
 // Minimap 跳转处理
 const handleMinimapJump = (lineIndex: number) => {
-  if (!leftCodeContent.value) return;
+  if (!leftCodeContent.value || props.leftLines.length === 0) return;
 
-  // 计算目标滚动位置
-  const lineHeight = 24; // 每行高度
-  const targetScrollTop = lineIndex * lineHeight;
+  // 使用固定的行高 24px
+  const LINE_HEIGHT = 24;
+  const targetScrollTop = lineIndex * LINE_HEIGHT;
 
   leftCodeContent.value.scrollTop = targetScrollTop;
   if (rightCodeContent.value) {

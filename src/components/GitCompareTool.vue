@@ -372,7 +372,7 @@ const loadStagedFileDiff = async (file: FileNode) => {
     });
 
     // 构建 diff 行（复用 loadFileDiff 的逻辑）
-    const result = await buildDiffLines(diffResult);
+    const result = buildDiffLines(diffResult);
 
     leftLines.value = result.leftLines;
     rightLines.value = result.rightLines;
@@ -394,8 +394,10 @@ const buildDiffLines = (diffResult: FileDiff) => {
   let rightLineNum = 1;
 
   diffResult.hunks.forEach(hunk => {
-    // 添加上下文行
-    for (let i = 0; i < Math.min(hunk.old_start - 1, hunk.new_start - 1); i++) {
+    // 添加上下文行 - hunk.old_start 和 hunk.new_start 是 1-based 行号
+    // 需要添加从当前位置到 hunk 开始前的所有行
+    const contextStart = Math.min(hunk.old_start, hunk.new_start) - 1;
+    for (let i = alignedLeftLines.length; i < contextStart; i++) {
       const oldContent = diffResult.old_content[i] || '';
       const newContent = diffResult.new_content[i] || '';
 
@@ -988,7 +990,9 @@ const loadFileDiff = async (file: FileNode): Promise<{ leftLines: DiffLine[]; ri
     let rightLineNum = 1;
 
     diffResult.hunks.forEach(hunk => {
-      for (let i = 0; i < Math.min(hunk.old_start - 1, hunk.new_start - 1); i++) {
+        // 添加上下文行 - hunk.old_start 和 hunk.new_start 是 1-based 行号
+        const contextStart = Math.min(hunk.old_start, hunk.new_start) - 1;
+        for (let i = alignedLeftLines.length; i < contextStart; i++) {
         const oldContent = diffResult.old_content[i] || '';
         const newContent = diffResult.new_content[i] || '';
 
