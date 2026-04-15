@@ -1,20 +1,12 @@
 <template>
   <div class="minimap" ref="minimapRef" @click="handleClick">
-    <div class="minimap-content">
-      <div
-        v-for="(line, index) in visibleLines"
-        :key="index"
-        class="minimap-line"
-        :class="getLineClass(line)"
-        :title="`Line ${line.lineNum}: ${line.content.slice(0, 50)}`"
-      ></div>
-    </div>
+    <canvas ref="canvasRef" class="minimap-canvas"></canvas>
     <div class="minimap-viewport" :style="viewportStyle"></div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 
 interface DiffLine {
   lineNum: number;
@@ -35,63 +27,105 @@ const emit = defineEmits<{
 }>();
 
 const minimapRef = ref<HTMLElement | null>(null);
+const canvasRef = ref<HTMLCanvasElement | null>(null);
 
-// 压缩显示的行数（最多显示 100 行）
-const visibleLines = computed(() => {
-  if (props.lines.length <= 100) {
-    return props.lines;
-  }
-  // 如果行数太多，进行采样
-  const result: DiffLine[] = [];
-  const step = props.lines.length / 100;
-  for (let i = 0; i < 100; i++) {
-    const index = Math.floor(i * step);
-    result.push(props.lines[index]);
-  }
-  return result;
-});
+// 颜色配置
+const colors = {
+  normal: 'rgba(128, 128, 128, 0.2)',
+  added: 'rgba(76, 175, 80, 0.8)',
+  removed: 'rgba(244, 67, 54, 0.8)',
+  changed: 'rgba(33, 150, 243, 0.8)',
+};
 
 // 视口指示器样式
 const viewportStyle = computed(() => {
   if (!props.contentHeight || props.contentHeight <= props.containerHeight) {
     return { display: 'none' };
   }
-  
+
   const ratio = props.containerHeight / props.contentHeight;
   const top = (props.scrollTop / props.contentHeight) * 100;
   const height = ratio * 100;
-  
+
   return {
     top: `${Math.min(top, 100 - height)}%`,
     height: `${Math.max(height, 5)}%`,
   };
 });
 
-// 获取行样式类
-const getLineClass = (line: DiffLine) => {
+// 获取行颜色
+const getLineColor = (line: DiffLine): string => {
   switch (line.changeType) {
     case 'added':
-      return 'line-added';
+      return colors.added;
     case 'removed':
-      return 'line-removed';
+      return colors.removed;
     case 'changed':
-      return 'line-changed';
+      return colors.changed;
     default:
-      return 'line-normal';
+      return colors.normal;
   }
+};
+
+// 绘制 minimap
+const drawMinimap = () => {
+  const canvas = canvasRef.value;
+  const container = minimapRef.value;
+  if (!canvas || !container || props.lines.length === 0) return;
+
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
+
+  // 设置 canvas 尺寸
+  const width = container.clientWidth;
+  const height = container.clientHeight;
+  canvas.width = width;
+  canvas.height = height;
+
+  // 清空画布
+  ctx.clearRect(0, 0, width, height);
+
+  // 计算每行的高度
+  const lineHeight = height / props.lines.length;
+
+  // 绘制每一行
+  props.lines.forEach((line, index) => {
+    const y = index * lineHeight;
+    const lineH = Math.max(lineHeight, 1); // 至少 1 像素
+
+    ctx.fillStyle = getLineColor(line);
+    ctx.fillRect(0, y, width, lineH);
+  });
 };
 
 // 处理点击事件
 const handleClick = (e: MouseEvent) => {
   if (!minimapRef.value || props.lines.length === 0) return;
-  
+
   const rect = minimapRef.value.getBoundingClientRect();
   const clickY = e.clientY - rect.top;
   const ratio = clickY / rect.height;
   const lineIndex = Math.floor(ratio * props.lines.length);
-  
+
   emit('jump', Math.max(0, Math.min(lineIndex, props.lines.length - 1)));
 };
+
+// 监听线条变化，重新绘制
+watch(() => props.lines, drawMinimap, { deep: true });
+
+// 监听尺寸变化，重新绘制
+const handleResize = () => {
+  drawMinimap();
+};
+
+onMounted(() => {
+  drawMinimap();
+  window.addEventListener('resize', handleResize);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('resize', handleResize);
+});
 </script>
 
 <style scoped>
@@ -103,41 +137,13 @@ const handleClick = (e: MouseEvent) => {
   position: relative;
   overflow: hidden;
   cursor: pointer;
+  flex-shrink: 0;
 }
 
-.minimap-content {
+.minimap-canvas {
   width: 100%;
   height: 100%;
-  display: flex;
-  flex-direction: column;
-}
-
-.minimap-line {
-  flex: 1;
-  min-height: 2px;
-  width: 100%;
-  transition: opacity 0.2s;
-}
-
-.minimap-line:hover {
-  opacity: 0.8;
-}
-
-.line-normal {
-  background-color: var(--text-secondary);
-  opacity: 0.2;
-}
-
-.line-added {
-  background-color: #4caf50;
-}
-
-.line-removed {
-  background-color: #f44336;
-}
-
-.line-changed {
-  background-color: #2196f3;
+  display: block;
 }
 
 .minimap-viewport {
