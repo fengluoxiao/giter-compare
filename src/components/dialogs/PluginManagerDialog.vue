@@ -70,7 +70,8 @@
 
   <!-- 冲突提示弹窗 -->
   <DialogBase
-    :open="showConflictDialog"
+    v-if="showConflictDialog"
+    :open="true"
     title="插件冲突"
     @close="showConflictDialog = false"
   >

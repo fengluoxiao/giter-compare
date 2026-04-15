@@ -5,7 +5,7 @@
         <div class="dialog-container" :class="{ large: large }" @click.stop>
           <div class="dialog-header">
             <h3 class="dialog-title">{{ title }}</h3>
-            <button class="dialog-close" @click="$emit('close')" title="关闭">
+            <button class="dialog-close" @click.stop="handleClose" title="关闭">
               <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                 <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
               </svg>
@@ -35,6 +35,11 @@ const emit = defineEmits<{
 }>();
 
 const handleOverlayClick = () => {
+  emit('close');
+};
+
+const handleClose = () => {
+  console.log('DialogBase: close button clicked');
   emit('close');
 };
 </script>
