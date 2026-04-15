@@ -1215,11 +1215,27 @@ const updateTabFileStatus = async (filePath: string) => {
   const tab = tabs.value.find(t => t.path === filePath && t.projectPath === currentPath.value);
   if (!tab) return;
 
+  // 从文件树中查找文件状态
+  const findFileStatus = (nodes: FileNode[]): string | undefined => {
+    for (const node of nodes) {
+      if (node.path === filePath && node.type === 'file') {
+        return node.status;
+      }
+      if (node.children) {
+        const status = findFileStatus(node.children);
+        if (status) return status;
+      }
+    }
+    return undefined;
+  };
+
+  const fileStatus = findFileStatus(fileTree.value);
+
   const fileNode: FileNode = {
     name: tab.name,
     path: tab.path,
     type: 'file',
-    status: '',
+    status: fileStatus || '',
     children: []
   };
 
