@@ -8,6 +8,13 @@ use std::path::Path;
 use std::time::Duration;
 use tauri::Emitter;
 
+// Windows 平台隐藏 CMD 窗口
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+#[cfg(target_os = "windows")]
+const CREATE_NO_WINDOW: u32 = 0x08000000;
+
 #[derive(Debug, Serialize, Deserialize, Clone)]
 pub struct DiffLine {
     pub line_number: usize,
@@ -56,11 +63,25 @@ impl FileWatcher {
 }
 
 fn has_system_git() -> bool {
-    Command::new("git")
-        .arg("--version")
-        .output()
+    let mut cmd = Command::new("git");
+    cmd.arg("--version");
+    
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    
+    cmd.output()
         .map(|output| output.status.success())
         .unwrap_or(false)
+}
+
+// 辅助函数：创建隐藏窗口的 Command（Windows）
+fn create_hidden_command(program: &str) -> Command {
+    let mut cmd = Command::new(program);
+    
+    #[cfg(target_os = "windows")]
+    cmd.creation_flags(CREATE_NO_WINDOW);
+    
+    cmd
 }
 
 fn get_repo_status(repo_path: &str) -> Result<Vec<GitStatus>, String> {
@@ -525,15 +546,15 @@ fn compare_strings_impl(old_content: &str, new_content: &str) -> Result<FileDiff
         .map_err(|e| format!("Failed to write temp file: {}", e))?;
 
     let output = if has_system_git() {
-        Command::new("git")
-            .args(&[
-                "diff",
-                "--no-index",
-                "--unified=10000",
-                old_file_path.to_str().unwrap(),
-                new_file_path.to_str().unwrap(),
-            ])
-            .output()
+        let mut cmd = create_hidden_command("git");
+        cmd.args(&[
+            "diff",
+            "--no-index",
+            "--unified=10000",
+            old_file_path.to_str().unwrap(),
+            new_file_path.to_str().unwrap(),
+        ]);
+        cmd.output()
             .map_err(|e| format!("Failed to execute git diff: {}", e))?
     } else {
         return Ok(diff_without_git(old_content, new_content));
@@ -575,9 +596,9 @@ async fn get_git_diff(repo_path: String) -> Result<Vec<FileDiff>, String> {
 
 #[tauri::command]
 async fn get_file_diff(old_path: String, new_path: String) -> Result<FileDiff, String> {
-    let output = Command::new("git")
-        .args(&["diff", "--no-index", "--unified=10000", &old_path, &new_path])
-        .output()
+    let mut cmd = create_hidden_command("git");
+    cmd.args(&["diff", "--no-index", "--unified=10000", &old_path, &new_path]);
+    let output = cmd.output()
         .map_err(|e| format!("Failed to execute git diff: {}", e))?;
 
     let diff_text = String::from_utf8_lossy(&output.stdout);
@@ -616,9 +637,9 @@ async fn compare_strings(old_content: String, new_content: String) -> Result<Fil
 
 #[tauri::command]
 async fn get_all_tracked_files(repo_path: String) -> Result<String, String> {
-    let output = Command::new("git")
-        .args(&["-C", &repo_path, "ls-files"])
-        .output()
+    let mut cmd = create_hidden_command("git");
+    cmd.args(&["-C", &repo_path, "ls-files"]);
+    let output = cmd.output()
         .map_err(|e| format!("Failed to execute git ls-files: {}", e))?;
 
     if output.status.success() {
