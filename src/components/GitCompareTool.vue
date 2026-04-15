@@ -35,6 +35,18 @@
       </div>
     </div>
 
+    <!-- 标签栏 -->
+    <TabBar
+      v-if="tabs.length > 0"
+      :tabs="tabs"
+      :active-tab-id="activeTabId"
+      @activate="activateTab"
+      @close="closeTab"
+      @close-all="closeAllTabs"
+      @close-others="closeOtherTabs"
+      @close-to-right="closeTabsToRight"
+    />
+
     <!-- 主内容区 -->
     <div class="main-container">
       <!-- 左侧项目列表 -->
@@ -312,6 +324,7 @@ import { listen } from '@tauri-apps/api/event';
 import FileTree from './FileTree.vue';
 import DiffLines from './DiffLines.vue';
 import Minimap from './Minimap.vue';
+import TabBar, { type Tab } from './TabBar.vue';
 
 interface FileNode {
   name: string;
@@ -371,6 +384,10 @@ const leftLines = ref<DiffLine[]>([]);
 const rightLines = ref<DiffLine[]>([]);
 const isBinary = ref(false);
 const diffStats = ref<{ added: number; removed: number; changed: number } | null>(null);
+
+// 标签页支持
+const tabs = ref<Tab[]>([]);
+const activeTabId = ref<string>('');
 
 // 多项目支持
 const projects = ref<Project[]>([]);
