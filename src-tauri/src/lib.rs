@@ -6,7 +6,7 @@ use notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
 use std::path::Path;
 use std::time::Duration;
-use tauri::Emitter;
+use tauri::{Emitter, Manager};
 
 // Windows 平台隐藏 CMD 窗口
 #[cfg(target_os = "windows")]
@@ -45,6 +45,22 @@ pub struct FileDiff {
 pub struct GitStatus {
     pub path: String,
     pub status: String,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct PluginInfo {
+    pub id: String,
+    pub name: String,
+    pub description: String,
+    pub version: String,
+    pub grammars: Vec<GrammarInfo>,
+}
+
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct GrammarInfo {
+    pub language: String,
+    pub scope_name: String,
+    pub path: String,
 }
 
 // 全局文件监控器
@@ -779,6 +795,192 @@ fn remove_dir(path: String) -> Result<(), String> {
     std::fs::remove_dir_all(&path).map_err(|e| format!("Failed to remove directory: {}", e))
 }
 
+// 导入 VSCode 语法高亮插件
+#[tauri::command]
+async fn import_vscode_plugin(
+    plugin_path: String,
+    app_handle: tauri::AppHandle,
+) -> Result<PluginInfo, String> {
+    use std::fs;
+    use std::path::Path;
+
+    let plugin_dir = Path::new(&plugin_path);
+    if !plugin_dir.exists() || !plugin_dir.is_dir() {
+        return Err("Invalid plugin directory".to_string());
+    }
+
+    // 读取 package.json
+    let package_json_path = plugin_dir.join("package.json");
+    let package_content = fs::read_to_string(&package_json_path)
+        .map_err(|e| format!("Failed to read package.json: {}", e))?;
+    let package: serde_json::Value = serde_json::from_str(&package_content)
+        .map_err(|e| format!("Failed to parse package.json: {}", e))?;
+
+    let plugin_id = package["name"].as_str().unwrap_or("unknown").to_string();
+    let plugin_name = package["displayName"].as_str()
+        .or_else(|| package["name"].as_str())
+        .unwrap_or("Unknown Plugin")
+        .to_string();
+    let plugin_description = package["description"].as_str().unwrap_or("").to_string();
+    let plugin_version = package["version"].as_str().unwrap_or("1.0.0").to_string();
+
+    // 查找语法文件
+    let grammars_dir = plugin_dir.join("syntaxes");
+    let mut grammars = Vec::new();
+
+    if grammars_dir.exists() {
+        for entry in fs::read_dir(&grammars_dir).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let path = entry.path();
+            if path.extension().map(|e| e == "json" || e == "tmLanguage").unwrap_or(false) {
+                let file_name = path.file_stem().unwrap().to_string_lossy().to_string();
+                let content = fs::read_to_string(&path).map_err(|e| e.to_string())?;
+                let grammar: serde_json::Value = serde_json::from_str(&content)
+                    .or_else(|_| -> Result<_, String> {
+                        // 尝试解析 plist XML 格式
+                        Ok(serde_json::json!({
+                            "scopeName": format!("source.{}", file_name),
+                            "name": file_name.clone()
+                        }))
+                    })?;
+
+                let scope_name = grammar["scopeName"].as_str()
+                    .or_else(|| grammar["scope_name"].as_str())
+                    .unwrap_or(&format!("source.{}", file_name))
+                    .to_string();
+                let language = grammar["name"].as_str()
+                    .unwrap_or(&file_name)
+                    .to_string();
+
+                grammars.push(GrammarInfo {
+                    language,
+                    scope_name,
+                    path: path.to_string_lossy().to_string(),
+                });
+            }
+        }
+    }
+
+    // 复制插件到应用数据目录
+    let app_data_dir = app_handle.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let plugins_dir = app_data_dir.join("plugins");
+    let target_dir = plugins_dir.join(&plugin_id);
+
+    fs::create_dir_all(&plugins_dir).map_err(|e| e.to_string())?;
+
+    // 如果已存在，先删除
+    if target_dir.exists() {
+        fs::remove_dir_all(&target_dir).map_err(|e| e.to_string())?;
+    }
+
+    // 复制插件文件
+    fn copy_dir_recursive(from: &Path, to: &Path) -> Result<(), String> {
+        fs::create_dir_all(to).map_err(|e| e.to_string())?;
+        for entry in fs::read_dir(from).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let from_path = entry.path();
+            let to_path = to.join(entry.file_name());
+            if from_path.is_dir() {
+                copy_dir_recursive(&from_path, &to_path)?;
+            } else {
+                fs::copy(&from_path, &to_path).map_err(|e| e.to_string())?;
+            }
+        }
+        Ok(())
+    }
+
+    copy_dir_recursive(plugin_dir, &target_dir)?;
+
+    Ok(PluginInfo {
+        id: plugin_id,
+        name: plugin_name,
+        description: plugin_description,
+        version: plugin_version,
+        grammars,
+    })
+}
+
+// 获取已安装的插件列表
+#[tauri::command]
+fn get_installed_plugins(app_handle: tauri::AppHandle) -> Result<Vec<PluginInfo>, String> {
+    use std::fs;
+    use std::path::Path;
+
+    let app_data_dir = app_handle.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let plugins_dir = app_data_dir.join("plugins");
+
+    let mut plugins = Vec::new();
+
+    if plugins_dir.exists() {
+        for entry in fs::read_dir(&plugins_dir).map_err(|e| e.to_string())? {
+            let entry = entry.map_err(|e| e.to_string())?;
+            let plugin_dir = entry.path();
+            if plugin_dir.is_dir() {
+                let package_json_path = plugin_dir.join("package.json");
+                if let Ok(content) = fs::read_to_string(&package_json_path) {
+                    if let Ok(package) = serde_json::from_str::<serde_json::Value>(&content) {
+                        let plugin_id = package["name"].as_str().unwrap_or("unknown").to_string();
+                        let plugin_name = package["displayName"].as_str()
+                            .or_else(|| package["name"].as_str())
+                            .unwrap_or("Unknown")
+                            .to_string();
+                        let plugin_description = package["description"].as_str().unwrap_or("").to_string();
+                        let plugin_version = package["version"].as_str().unwrap_or("1.0.0").to_string();
+
+                        // 查找语法文件
+                        let grammars_dir = plugin_dir.join("syntaxes");
+                        let mut grammars = Vec::new();
+
+                        if grammars_dir.exists() {
+                            if let Ok(entries) = fs::read_dir(&grammars_dir) {
+                                for entry in entries.flatten() {
+                                    let path = entry.path();
+                                    if path.extension().map(|e| e == "json" || e == "tmLanguage").unwrap_or(false) {
+                                        let file_name = path.file_stem().unwrap().to_string_lossy().to_string();
+                                        grammars.push(GrammarInfo {
+                                            language: file_name.clone(),
+                                            scope_name: format!("source.{}", file_name),
+                                            path: path.to_string_lossy().to_string(),
+                                        });
+                                    }
+                                }
+                            }
+                        }
+
+                        plugins.push(PluginInfo {
+                            id: plugin_id,
+                            name: plugin_name,
+                            description: plugin_description,
+                            version: plugin_version,
+                            grammars,
+                        });
+                    }
+                }
+            }
+        }
+    }
+
+    Ok(plugins)
+}
+
+// 删除插件
+#[tauri::command]
+fn remove_plugin(plugin_id: String, app_handle: tauri::AppHandle) -> Result<(), String> {
+    use std::fs;
+
+    let app_data_dir = app_handle.path().app_data_dir()
+        .map_err(|e| format!("Failed to get app data dir: {}", e))?;
+    let plugin_dir = app_data_dir.join("plugins").join(&plugin_id);
+
+    if plugin_dir.exists() {
+        fs::remove_dir_all(&plugin_dir).map_err(|e| e.to_string())?;
+    }
+
+    Ok(())
+}
+
 pub fn run() {
     let file_watcher = Arc::new(Mutex::new(FileWatcher::new()));
     
@@ -804,7 +1006,10 @@ pub fn run() {
             read_file,
             write_file,
             copy_dir,
-            remove_dir
+            remove_dir,
+            import_vscode_plugin,
+            get_installed_plugins,
+            remove_plugin
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

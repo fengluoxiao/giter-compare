@@ -47,12 +47,15 @@
         :file-tree="fileTree"
         :view-mode="viewMode"
         :show-all-files="showAllFiles"
+        :show-deleted-files="showDeletedFiles"
+        :git-changes="gitChanges"
         :is-collapsed="isFileSidebarCollapsed"
         :width="fileSidebarWidth"
         :staged-files="stagedFiles"
         :selected-staged-path="selectedStagedPath"
         @update:view-mode="onViewModeChange"
         @update:show-all-files="onShowAllFilesChange"
+        @update:show-deleted-files="onShowDeletedFilesChange"
         @toggle-collapse="toggleFileSidebar"
         @select-file="selectFile"
         @toggle-directory="toggleDirectory"
@@ -180,6 +183,7 @@ interface Project {
 const theme = ref('light');
 const viewMode = ref<'working' | 'staged'>('working');
 const showAllFiles = ref(true);
+const showDeletedFiles = ref(false);
 
 // 对话框状态
 const showCompareFile = ref(false);
@@ -201,6 +205,7 @@ const leftLines = ref<DiffLine[]>([]);
 const rightLines = ref<DiffLine[]>([]);
 const isBinary = ref(false);
 const diffStats = ref<{ added: number; removed: number; changed: number } | null>(null);
+const gitChanges = ref<GitStatus[]>([]);
 
 // 暂存区状态
 const stagedFiles = ref<{ name: string; path: string; status?: string }[]>([]);
@@ -273,6 +278,11 @@ onMounted(async () => {
     showAllFiles.value = savedShowAll === 'true';
   }
 
+  const savedShowDeleted = localStorage.getItem('showDeletedFiles');
+  if (savedShowDeleted !== null) {
+    showDeletedFiles.value = savedShowDeleted === 'true';
+  }
+
   loadProjects();
 
   unlistenFileChange = await listen('file-changed', () => {
@@ -300,6 +310,15 @@ const toggleTheme = () => {
 const onShowAllFilesChange = (value: boolean) => {
   showAllFiles.value = value;
   localStorage.setItem('showAllFiles', showAllFiles.value.toString());
+  if (currentPath.value) {
+    loadFileTree(currentPath.value);
+  }
+};
+
+// 显示已删除文件切换
+const onShowDeletedFilesChange = (value: boolean) => {
+  showDeletedFiles.value = value;
+  localStorage.setItem('showDeletedFiles', showDeletedFiles.value.toString());
   if (currentPath.value) {
     loadFileTree(currentPath.value);
   }
@@ -333,29 +352,48 @@ const selectStagedFile = async (path: string) => {
   await loadStagedFileDiff(fileNode);
 };
 
-// 加载暂存区文件的 diff
+// 加载更改文件的 diff（工作区中的变更）
 const loadStagedFileDiff = async (file: FileNode) => {
   try {
-    // 获取暂存区内容
-    const stagedContent = await invoke<string>('get_staged_file_content', {
-      repoPath: currentPath.value,
-      filePath: file.path
-    });
-
-    // 获取 HEAD 版本内容
+    const fileStatus = file.status?.toLowerCase();
+    let workContent = '';
     let headContent = '';
-    try {
-      headContent = await invoke<string>('get_file_content_at_revision', {
-        repoPath: currentPath.value,
-        filePath: file.path,
-        revision: 'HEAD'
+
+    if (fileStatus === 'deleted') {
+      // 已删除的文件：工作区内容为空，从 Git 获取删除前的内容
+      workContent = '';
+      try {
+        headContent = await invoke<string>('get_file_content_at_revision', {
+          repoPath: currentPath.value,
+          filePath: file.path,
+          revision: 'HEAD'
+        });
+      } catch (e) {
+        headContent = '';
+      }
+    } else if (fileStatus === 'added') {
+      // 新增的文件：HEAD 中不存在，读取工作区内容
+      workContent = await invoke<string>('read_file_content', {
+        filePath: `${currentPath.value}/${file.path}`
       });
-    } catch (e) {
-      // 文件可能是新增的，HEAD 中不存在
       headContent = '';
+    } else {
+      // 修改的文件：读取工作区内容和 HEAD 版本
+      workContent = await invoke<string>('read_file_content', {
+        filePath: `${currentPath.value}/${file.path}`
+      });
+      try {
+        headContent = await invoke<string>('get_file_content_at_revision', {
+          repoPath: currentPath.value,
+          filePath: file.path,
+          revision: 'HEAD'
+        });
+      } catch (e) {
+        headContent = '';
+      }
     }
 
-    const isBinaryFile = stagedContent === '[二进制文件]' || headContent === '[二进制文件]';
+    const isBinaryFile = workContent === '[二进制文件]' || headContent === '[二进制文件]';
 
     if (isBinaryFile) {
       currentFile.value = file;
@@ -366,9 +404,38 @@ const loadStagedFileDiff = async (file: FileNode) => {
       return;
     }
 
+    // 对于已删除的文件，直接显示完整的旧文件内容
+    if (fileStatus === 'deleted') {
+      const alignedLeftLines: DiffLine[] = [];
+      const alignedRightLines: DiffLine[] = [];
+      const oldLines = headContent.split('\n');
+
+      for (let i = 0; i < oldLines.length; i++) {
+        alignedLeftLines.push({
+          lineNum: 0,
+          content: '',
+          changeType: 'empty',
+          isDiff: false
+        });
+        alignedRightLines.push({
+          lineNum: i + 1,
+          content: oldLines[i],
+          changeType: 'removed',
+          isDiff: true
+        });
+      }
+
+      leftLines.value = alignedLeftLines;
+      rightLines.value = alignedRightLines;
+      isBinary.value = false;
+      diffStats.value = { added: 0, removed: oldLines.length, changed: 0 };
+      currentFile.value = file;
+      return;
+    }
+
     const diffResult = await invoke<FileDiff>('compare_strings', {
       oldContent: headContent,
-      newContent: stagedContent
+      newContent: workContent
     });
 
     // 构建 diff 行（复用 loadFileDiff 的逻辑）
@@ -380,7 +447,7 @@ const loadStagedFileDiff = async (file: FileNode) => {
     diffStats.value = result.diffStats;
     currentFile.value = file;
   } catch (e) {
-    console.error('Failed to load staged file diff:', e);
+    console.error('Failed to load changed file diff:', e);
   }
 };
 
@@ -841,23 +908,87 @@ const loadFileTree = async (path: string) => {
       console.log('Not a git repository or error getting changes');
     }
 
+    // 保存变更数据用于检测是否有已删除的文件
+    gitChanges.value = changes;
+
     fileTree.value = await buildFileTreeRecursive(entries, path, changes);
+
+    // 如果有已删除的文件且用户选择显示，则添加到文件树
+    if (showDeletedFiles.value) {
+      const deletedChanges = changes.filter(c => c.status === 'Deleted');
+      for (const deleted of deletedChanges) {
+        addDeletedFileToTree(deleted.path);
+      }
+    }
   } catch (e) {
     console.error('Failed to load file tree:', e);
     alert('加载文件树失败: ' + e);
   }
 };
 
-// 加载暂存区文件列表
+// 添加已删除的文件到文件树
+const addDeletedFileToTree = (filePath: string) => {
+  const parts = filePath.split('/');
+  let currentLevel = fileTree.value;
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const isFile = i === parts.length - 1;
+    const currentPath = parts.slice(0, i + 1).join('/');
+
+    const existingNode = currentLevel.find(node => node.name === part);
+
+    if (existingNode) {
+      if (isFile) {
+        // 更新已存在节点的状态为 Deleted
+        existingNode.status = 'Deleted';
+      } else {
+        // 展开父目录
+        existingNode.expanded = true;
+        currentLevel = existingNode.children;
+      }
+    } else {
+      // 创建新节点
+      if (isFile) {
+        currentLevel.push({
+          name: part,
+          path: currentPath,
+          type: 'file',
+          status: 'Deleted',
+          children: []
+        });
+      } else {
+        const newDir: FileNode = {
+          name: part,
+          path: currentPath,
+          type: 'directory',
+          children: [],
+          expanded: true
+        };
+        currentLevel.push(newDir);
+        currentLevel = newDir.children;
+      }
+    }
+  }
+};
+
+// 加载更改的文件列表（工作区中已修改但未暂存的文件，类似 VSCode 的"更改"视图）
 const loadStagedFiles = async () => {
   if (!currentPath.value) return;
 
   try {
-    const stagedChanges = await invoke<GitStatus[]>('get_staged_changes', {
+    // 获取工作区的变更（未暂存的文件）
+    const workingChanges = await invoke<GitStatus[]>('get_working_tree_changes', {
       repoPath: currentPath.value
     });
 
-    stagedFiles.value = stagedChanges.map(change => {
+    // 过滤掉未跟踪的文件，只显示已修改、已删除、已重命名的文件
+    const changedFiles = workingChanges.filter(change => {
+      const status = change.status.toLowerCase();
+      return status === 'modified' || status === 'deleted' || status === 'renamed' || status === 'added';
+    });
+
+    stagedFiles.value = changedFiles.map(change => {
       const parts = change.path.split(/[\\/]/);
       return {
         name: parts[parts.length - 1] || change.path,
@@ -866,7 +997,7 @@ const loadStagedFiles = async () => {
       };
     });
   } catch (e) {
-    console.error('Failed to load staged files:', e);
+    console.error('Failed to load changed files:', e);
     stagedFiles.value = [];
   }
 };
@@ -891,6 +1022,9 @@ const refresh = async () => {
     } catch (e) {
       console.log('Not a git repository or error getting changes');
     }
+
+    // 更新 gitChanges 用于检测是否有已删除的文件
+    gitChanges.value = changes;
 
     // 更新文件树中的状态（保持展开状态）
     updateFileTreeStatus(fileTree.value, changes);
@@ -950,16 +1084,33 @@ const handleScroll = (scrollTop: number) => {
 // 加载文件 diff 内容
 const loadFileDiff = async (file: FileNode): Promise<{ leftLines: DiffLine[]; rightLines: DiffLine[]; isBinary: boolean; diffStats: any } | null> => {
   try {
-    const workContent = await invoke<string>('read_file_content', {
-      filePath: `${currentPath.value}/${file.path}`
-    });
-
-    let indexContent = '';
     const fileStatus = file.status?.toLowerCase();
+    let workContent = '';
+    let indexContent = '';
 
-    if (fileStatus === 'added') {
+    if (fileStatus === 'deleted') {
+      // 已删除的文件：工作区内容为空，从 Git 获取删除前的内容
+      workContent = '';
+      try {
+        indexContent = await invoke<string>('get_file_content_at_revision', {
+          repoPath: currentPath.value,
+          filePath: file.path,
+          revision: 'HEAD'
+        });
+      } catch (e) {
+        indexContent = '';
+      }
+    } else if (fileStatus === 'added') {
+      // 新增的文件：索引内容为空，读取工作区内容
+      workContent = await invoke<string>('read_file_content', {
+        filePath: `${currentPath.value}/${file.path}`
+      });
       indexContent = '';
     } else {
+      // 修改的文件：读取工作区内容和 Git 中的内容
+      workContent = await invoke<string>('read_file_content', {
+        filePath: `${currentPath.value}/${file.path}`
+      });
       try {
         indexContent = await invoke<string>('get_file_content_at_revision', {
           repoPath: currentPath.value,
@@ -975,6 +1126,35 @@ const loadFileDiff = async (file: FileNode): Promise<{ leftLines: DiffLine[]; ri
 
     if (isBinaryFile) {
       return { leftLines: [], rightLines: [], isBinary: true, diffStats: null };
+    }
+
+    // 对于已删除的文件，直接显示完整的旧文件内容，所有行标记为 removed
+    if (fileStatus === 'deleted') {
+      const alignedLeftLines: DiffLine[] = [];
+      const alignedRightLines: DiffLine[] = [];
+      const oldLines = indexContent.split('\n');
+
+      for (let i = 0; i < oldLines.length; i++) {
+        alignedLeftLines.push({
+          lineNum: 0,
+          content: '',
+          changeType: 'empty',
+          isDiff: false
+        });
+        alignedRightLines.push({
+          lineNum: i + 1,
+          content: oldLines[i],
+          changeType: 'removed',
+          isDiff: true
+        });
+      }
+
+      return {
+        leftLines: alignedLeftLines,
+        rightLines: alignedRightLines,
+        isBinary: false,
+        diffStats: { added: 0, removed: oldLines.length, changed: 0 }
+      };
     }
 
     const diffResult = await invoke<FileDiff>('compare_strings', {

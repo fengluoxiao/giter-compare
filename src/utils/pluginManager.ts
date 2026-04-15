@@ -138,7 +138,7 @@ class PluginManager {
   checkConflicts(plugin: GrammarPlugin): string[] {
     const conflicts: string[] = [];
     
-    for (const [id, existingPlugin] of this.plugins) {
+    for (const [, existingPlugin] of this.plugins) {
       if (!existingPlugin.enabled) continue;
       
       // 检查语言冲突

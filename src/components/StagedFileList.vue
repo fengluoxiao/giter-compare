@@ -14,7 +14,7 @@
       </span>
     </div>
     <div v-if="stagedFiles.length === 0" class="empty-state">
-      暂存区为空
+      没有更改的文件
     </div>
   </div>
 </template>

@@ -26,14 +26,14 @@
           :class="{ active: viewMode === 'working' }"
           @click="$emit('update:viewMode', 'working')"
         >
-          工作区
+          文件树
         </button>
         <button
           class="tab"
           :class="{ active: viewMode === 'staged' }"
           @click="$emit('update:viewMode', 'staged')"
         >
-          暂存区
+          更改
         </button>
       </div>
       <!-- 只在工作区显示"显示所有文件"选项 -->
@@ -45,6 +45,17 @@
             @change="$emit('update:showAllFiles', ($event.target as HTMLInputElement).checked)"
           />
           <span class="toggle-text">显示所有文件</span>
+        </label>
+      </div>
+      <!-- 显示已删除文件选项 -->
+      <div v-show="!isCollapsed && viewMode === 'working' && hasDeletedFiles" class="view-toggle">
+        <label class="toggle-label">
+          <input
+            type="checkbox"
+            :checked="showDeletedFiles"
+            @change="$emit('update:showDeletedFiles', ($event.target as HTMLInputElement).checked)"
+          />
+          <span class="toggle-text">显示已删除文件</span>
         </label>
       </div>
     </div>
@@ -77,6 +88,7 @@
 </template>
 
 <script setup lang="ts">
+import { computed } from 'vue';
 import FileTree from './FileTree.vue';
 import StagedFileList from './StagedFileList.vue';
 
@@ -95,10 +107,17 @@ interface StagedFile {
   status?: string;
 }
 
-defineProps<{
+interface GitChange {
+  path: string;
+  status: string;
+}
+
+const props = defineProps<{
   fileTree: FileNode[];
   viewMode: 'working' | 'staged';
   showAllFiles: boolean;
+  showDeletedFiles: boolean;
+  gitChanges: GitChange[];
   isCollapsed: boolean;
   width: number;
   stagedFiles?: StagedFile[];
@@ -108,12 +127,18 @@ defineProps<{
 defineEmits<{
   'update:viewMode': [mode: 'working' | 'staged'];
   'update:showAllFiles': [value: boolean];
+  'update:showDeletedFiles': [value: boolean];
   'toggle-collapse': [];
   'select-file': [path: string];
   'toggle-directory': [node: FileNode];
   'select-staged-file': [path: string];
   'start-resize': [event: MouseEvent];
 }>();
+
+// 检查是否有已删除的文件（基于 Git 变更数据，而不是文件树）
+const hasDeletedFiles = computed(() => {
+  return props.gitChanges.some(change => change.status === 'Deleted');
+});
 </script>
 
 <style scoped>
