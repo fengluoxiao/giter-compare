@@ -229,6 +229,32 @@ async fn read_file_content(file_path: String) -> Result<String, String> {
         .map_err(|e| format!("Failed to convert to string: {}", e))
 }
 
+#[tauri::command]
+async fn get_staged_file_content(repo_path: String, file_path: String) -> Result<String, String> {
+    let repo = Repository::open(repo_path)
+        .map_err(|e| format!("Failed to open repository: {}", e))?;
+
+    // 获取暂存区（index）中的文件内容
+    let index = repo.index()
+        .map_err(|e| format!("Failed to get index: {}", e))?;
+
+    let index_entry = index.get_path(Path::new(&file_path), 0)
+        .ok_or_else(|| format!("File not found in index: {}", file_path))?;
+
+    let blob = repo.find_blob(index_entry.id)
+        .map_err(|e| format!("Failed to find blob: {}", e))?;
+
+    let content = blob.content();
+    
+    // 检查是否是二进制文件
+    if content.iter().any(|&b| b == 0) {
+        return Ok("[二进制文件]".to_string());
+    }
+
+    String::from_utf8(content.to_vec())
+        .map_err(|e| format!("Failed to convert to string: {}", e))
+}
+
 fn parse_diff(diff_text: &str, _base_path: &str) -> Result<FileDiff, String> {
     let mut old_path = String::new();
     let mut new_path = String::new();
@@ -692,6 +718,7 @@ pub fn run() {
             get_staged_changes,
             get_file_content_at_revision,
             read_file_content,
+            get_staged_file_content,
             compare_strings,
             get_all_tracked_files,
             read_directory,

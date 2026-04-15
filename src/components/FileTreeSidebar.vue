@@ -36,7 +36,8 @@
           暂存区
         </button>
       </div>
-      <div v-show="!isCollapsed" class="view-toggle">
+      <!-- 只在工作区显示"显示所有文件"选项 -->
+      <div v-show="!isCollapsed && viewMode === 'working'" class="view-toggle">
         <label class="toggle-label">
           <input
             type="checkbox"
@@ -48,11 +49,19 @@
       </div>
     </div>
     <div v-show="!isCollapsed" class="file-list">
+      <!-- 工作区：显示文件树 -->
       <FileTree
-        v-if="fileTree.length > 0"
+        v-if="viewMode === 'working' && fileTree.length > 0"
         :nodes="fileTree"
         @select="$emit('select-file', $event)"
         @toggle="$emit('toggle-directory', $event)"
+      />
+      <!-- 暂存区：显示更改的文件列表 -->
+      <StagedFileList
+        v-else-if="viewMode === 'staged'"
+        :staged-files="stagedFiles"
+        :selected-path="selectedStagedPath"
+        @select="$emit('select-staged-file', $event)"
       />
       <div v-else class="empty-state">
         选择左侧项目或点击"打开文件夹"
@@ -69,6 +78,7 @@
 
 <script setup lang="ts">
 import FileTree from './FileTree.vue';
+import StagedFileList from './StagedFileList.vue';
 
 interface FileNode {
   name: string;
@@ -79,12 +89,20 @@ interface FileNode {
   expanded?: boolean;
 }
 
+interface StagedFile {
+  name: string;
+  path: string;
+  status?: string;
+}
+
 defineProps<{
   fileTree: FileNode[];
   viewMode: 'working' | 'staged';
   showAllFiles: boolean;
   isCollapsed: boolean;
   width: number;
+  stagedFiles?: StagedFile[];
+  selectedStagedPath?: string;
 }>();
 
 defineEmits<{
@@ -93,6 +111,7 @@ defineEmits<{
   'toggle-collapse': [];
   'select-file': [path: string];
   'toggle-directory': [node: FileNode];
+  'select-staged-file': [path: string];
   'start-resize': [event: MouseEvent];
 }>();
 </script>

@@ -48,11 +48,14 @@
         :show-all-files="showAllFiles"
         :is-collapsed="isFileSidebarCollapsed"
         :width="fileSidebarWidth"
-        @update:view-mode="viewMode = $event"
+        :staged-files="stagedFiles"
+        :selected-staged-path="selectedStagedPath"
+        @update:view-mode="onViewModeChange"
         @update:show-all-files="onShowAllFilesChange"
         @toggle-collapse="toggleFileSidebar"
         @select-file="selectFile"
         @toggle-directory="toggleDirectory"
+        @select-staged-file="selectStagedFile"
         @start-resize="startResizeFileSidebar"
       />
 
@@ -183,6 +186,10 @@ const rightLines = ref<DiffLine[]>([]);
 const isBinary = ref(false);
 const diffStats = ref<{ added: number; removed: number; changed: number } | null>(null);
 
+// 暂存区状态
+const stagedFiles = ref<{ name: string; path: string; status?: string }[]>([]);
+const selectedStagedPath = ref<string>('');
+
 // 标签页支持
 const tabs = ref<Tab[]>([]);
 const activeTabId = ref<string>('');
@@ -276,6 +283,257 @@ const onShowAllFilesChange = (value: boolean) => {
   if (currentPath.value) {
     loadFileTree(currentPath.value);
   }
+};
+
+// 视图模式切换
+const onViewModeChange = async (mode: 'working' | 'staged') => {
+  viewMode.value = mode;
+  if (mode === 'staged') {
+    await loadStagedFiles();
+  }
+};
+
+// 选择暂存区文件
+const selectStagedFile = async (path: string) => {
+  selectedStagedPath.value = path;
+
+  const file = stagedFiles.value.find(f => f.path === path);
+  if (!file) return;
+
+  // 创建文件节点
+  const fileNode: FileNode = {
+    name: file.name,
+    path: file.path,
+    type: 'file',
+    status: file.status,
+    children: []
+  };
+
+  // 加载暂存区文件的 diff
+  await loadStagedFileDiff(fileNode);
+};
+
+// 加载暂存区文件的 diff
+const loadStagedFileDiff = async (file: FileNode) => {
+  try {
+    // 获取暂存区内容
+    const stagedContent = await invoke<string>('get_staged_file_content', {
+      repoPath: currentPath.value,
+      filePath: file.path
+    });
+
+    // 获取 HEAD 版本内容
+    let headContent = '';
+    try {
+      headContent = await invoke<string>('get_file_content_at_revision', {
+        repoPath: currentPath.value,
+        filePath: file.path,
+        revision: 'HEAD'
+      });
+    } catch (e) {
+      // 文件可能是新增的，HEAD 中不存在
+      headContent = '';
+    }
+
+    const isBinaryFile = stagedContent === '[二进制文件]' || headContent === '[二进制文件]';
+
+    if (isBinaryFile) {
+      currentFile.value = file;
+      leftLines.value = [];
+      rightLines.value = [];
+      isBinary.value = true;
+      diffStats.value = null;
+      return;
+    }
+
+    const diffResult = await invoke<FileDiff>('compare_strings', {
+      oldContent: headContent,
+      newContent: stagedContent
+    });
+
+    // 构建 diff 行（复用 loadFileDiff 的逻辑）
+    const result = await buildDiffLines(diffResult);
+
+    leftLines.value = result.leftLines;
+    rightLines.value = result.rightLines;
+    isBinary.value = false;
+    diffStats.value = result.diffStats;
+    currentFile.value = file;
+  } catch (e) {
+    console.error('Failed to load staged file diff:', e);
+  }
+};
+
+// 构建 diff 行的辅助函数
+const buildDiffLines = (diffResult: FileDiff) => {
+  const alignedLeftLines: DiffLine[] = [];
+  const alignedRightLines: DiffLine[] = [];
+
+  let added = 0, removed = 0, changed = 0;
+  let leftLineNum = 1;
+  let rightLineNum = 1;
+
+  diffResult.hunks.forEach(hunk => {
+    // 添加上下文行
+    for (let i = 0; i < Math.min(hunk.old_start - 1, hunk.new_start - 1); i++) {
+      const oldContent = diffResult.old_content[i] || '';
+      const newContent = diffResult.new_content[i] || '';
+
+      alignedLeftLines.push({
+        lineNum: leftLineNum++,
+        content: newContent,
+        changeType: 'unchanged',
+        isDiff: false
+      });
+      alignedRightLines.push({
+        lineNum: rightLineNum++,
+        content: oldContent,
+        changeType: 'unchanged',
+        isDiff: false
+      });
+    }
+
+    let pendingRemoved: { content: string; lineNum: number } | null = null;
+
+    hunk.lines.forEach(line => {
+      if (line.change_type === 'removed') {
+        pendingRemoved = { content: line.content, lineNum: rightLineNum++ };
+        removed++;
+      } else if (line.change_type === 'added') {
+        if (pendingRemoved) {
+          alignedLeftLines.push({
+            lineNum: leftLineNum++,
+            content: line.content,
+            changeType: 'changed',
+            isDiff: true
+          });
+          alignedRightLines.push({
+            lineNum: pendingRemoved.lineNum,
+            content: pendingRemoved.content,
+            changeType: 'changed',
+            isDiff: true
+          });
+          pendingRemoved = null;
+          changed++;
+        } else {
+          alignedLeftLines.push({
+            lineNum: leftLineNum++,
+            content: line.content,
+            changeType: 'added',
+            isDiff: true
+          });
+          alignedRightLines.push({
+            lineNum: 0,
+            content: '',
+            changeType: 'empty',
+            isDiff: false
+          });
+          added++;
+        }
+      } else {
+        if (pendingRemoved) {
+          alignedLeftLines.push({
+            lineNum: 0,
+            content: '',
+            changeType: 'empty',
+            isDiff: false
+          });
+          alignedRightLines.push({
+            lineNum: pendingRemoved.lineNum,
+            content: pendingRemoved.content,
+            changeType: 'removed',
+            isDiff: true
+          });
+          pendingRemoved = null;
+        }
+
+        alignedLeftLines.push({
+          lineNum: leftLineNum++,
+          content: line.content,
+          changeType: 'unchanged',
+          isDiff: false
+        });
+        alignedRightLines.push({
+          lineNum: rightLineNum++,
+          content: line.content,
+          changeType: 'unchanged',
+          isDiff: false
+        });
+      }
+    });
+
+    const finalPending = pendingRemoved;
+    if (finalPending) {
+      alignedLeftLines.push({
+        lineNum: 0,
+        content: '',
+        changeType: 'empty',
+        isDiff: false
+      });
+      alignedRightLines.push({
+        lineNum: finalPending.lineNum,
+        content: finalPending.content,
+        changeType: 'removed',
+        isDiff: true
+      });
+    }
+  });
+
+  // 添加剩余行
+  const maxLines = Math.max(diffResult.old_content.length, diffResult.new_content.length);
+  for (let i = alignedLeftLines.length; i < maxLines; i++) {
+    const oldContent = diffResult.old_content[i] || '';
+    const newContent = diffResult.new_content[i] || '';
+
+    if (oldContent && !newContent) {
+      alignedLeftLines.push({
+        lineNum: 0,
+        content: '',
+        changeType: 'empty',
+        isDiff: false
+      });
+      alignedRightLines.push({
+        lineNum: rightLineNum++,
+        content: oldContent,
+        changeType: 'removed',
+        isDiff: true
+      });
+      removed++;
+    } else if (!oldContent && newContent) {
+      alignedLeftLines.push({
+        lineNum: leftLineNum++,
+        content: newContent,
+        changeType: 'added',
+        isDiff: true
+      });
+      alignedRightLines.push({
+        lineNum: 0,
+        content: '',
+        changeType: 'empty',
+        isDiff: false
+      });
+      added++;
+    } else if (oldContent && newContent) {
+      alignedLeftLines.push({
+        lineNum: leftLineNum++,
+        content: newContent,
+        changeType: 'unchanged',
+        isDiff: false
+      });
+      alignedRightLines.push({
+        lineNum: rightLineNum++,
+        content: oldContent,
+        changeType: 'unchanged',
+        isDiff: false
+      });
+    }
+  }
+
+  return {
+    leftLines: alignedLeftLines,
+    rightLines: alignedRightLines,
+    diffStats: { added, removed, changed }
+  };
 };
 
 // 项目相关方法
@@ -560,6 +818,29 @@ const loadFileTree = async (path: string) => {
   } catch (e) {
     console.error('Failed to load file tree:', e);
     alert('加载文件树失败: ' + e);
+  }
+};
+
+// 加载暂存区文件列表
+const loadStagedFiles = async () => {
+  if (!currentPath.value) return;
+
+  try {
+    const stagedChanges = await invoke<GitStatus[]>('get_staged_changes', {
+      repoPath: currentPath.value
+    });
+
+    stagedFiles.value = stagedChanges.map(change => {
+      const parts = change.path.split('/');
+      return {
+        name: parts[parts.length - 1] || change.path,
+        path: change.path,
+        status: change.status
+      };
+    });
+  } catch (e) {
+    console.error('Failed to load staged files:', e);
+    stagedFiles.value = [];
   }
 };
 
