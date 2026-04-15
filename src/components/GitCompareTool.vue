@@ -919,11 +919,16 @@ const syncScroll = (source: 'left' | 'right') => {
   });
 };
 
-const refresh = () => {
+// 刷新 - 更新文件树和当前打开的标签
+const refresh = async () => {
   if (currentPath.value) {
-    loadFileTree(currentPath.value);
-    if (currentFile.value) {
-      selectFile(currentFile.value.path);
+    await loadFileTree(currentPath.value);
+
+    // 更新所有当前项目的标签
+    for (const tab of tabs.value) {
+      if (tab.projectPath === currentPath.value) {
+        await updateTabFileStatus(tab.path);
+      }
     }
   }
 };
@@ -945,6 +950,223 @@ const handleMinimapJump = (lineIndex: number) => {
   leftScrollTop.value = targetScrollTop;
 };
 
+// 加载文件 diff 内容
+const loadFileDiff = async (file: FileNode): Promise<{ leftLines: DiffLine[]; rightLines: DiffLine[]; isBinary: boolean; diffStats: any } | null> => {
+  try {
+    const workContent = await invoke<string>('read_file_content', {
+      filePath: `${currentPath.value}/${file.path}`
+    });
+
+    // 根据文件状态选择比较方式
+    let indexContent = '';
+    const fileStatus = file.status?.toLowerCase();
+
+    if (fileStatus === 'added') {
+      indexContent = '';
+    } else {
+      try {
+        indexContent = await invoke<string>('get_file_content_at_revision', {
+          repoPath: currentPath.value,
+          filePath: file.path,
+          revision: 'HEAD'
+        });
+      } catch (e) {
+        indexContent = '';
+      }
+    }
+
+    const isBinaryFile = workContent === '[二进制文件]' || indexContent === '[二进制文件]';
+
+    if (isBinaryFile) {
+      return { leftLines: [], rightLines: [], isBinary: true, diffStats: null };
+    }
+
+    const diffResult = await invoke<FileDiff>('compare_strings', {
+      oldContent: indexContent,
+      newContent: workContent
+    });
+
+    // 构建对齐的行列表
+    const alignedLeftLines: DiffLine[] = [];
+    const alignedRightLines: DiffLine[] = [];
+
+    let added = 0, removed = 0, changed = 0;
+    let leftLineNum = 1;
+    let rightLineNum = 1;
+
+    diffResult.hunks.forEach(hunk => {
+      // 首先添加未更改的行（上下文）
+      for (let i = 0; i < Math.min(hunk.old_start - 1, hunk.new_start - 1); i++) {
+        const oldContent = diffResult.old_content[i] || '';
+        const newContent = diffResult.new_content[i] || '';
+
+        alignedLeftLines.push({
+          lineNum: leftLineNum++,
+          content: newContent,
+          changeType: 'unchanged',
+          isDiff: false
+        });
+        alignedRightLines.push({
+          lineNum: rightLineNum++,
+          content: oldContent,
+          changeType: 'unchanged',
+          isDiff: false
+        });
+      }
+
+      // 处理 hunks 中的每一行
+      let pendingRemoved: { content: string; lineNum: number } | null = null;
+
+      hunk.lines.forEach(line => {
+        if (line.change_type === 'removed') {
+          pendingRemoved = {
+            content: line.content,
+            lineNum: rightLineNum++
+          };
+          removed++;
+        } else if (line.change_type === 'added') {
+          if (pendingRemoved) {
+            alignedLeftLines.push({
+              lineNum: leftLineNum++,
+              content: line.content,
+              changeType: 'changed',
+              isDiff: true
+            });
+            alignedRightLines.push({
+              lineNum: pendingRemoved.lineNum,
+              content: pendingRemoved.content,
+              changeType: 'changed',
+              isDiff: true
+            });
+            pendingRemoved = null;
+            changed++;
+          } else {
+            alignedLeftLines.push({
+              lineNum: leftLineNum++,
+              content: line.content,
+              changeType: 'added',
+              isDiff: true
+            });
+            alignedRightLines.push({
+              lineNum: 0,
+              content: '',
+              changeType: 'empty',
+              isDiff: false
+            });
+            added++;
+          }
+        } else {
+          if (pendingRemoved) {
+            alignedLeftLines.push({
+              lineNum: 0,
+              content: '',
+              changeType: 'empty',
+              isDiff: false
+            });
+            alignedRightLines.push({
+              lineNum: pendingRemoved.lineNum,
+              content: pendingRemoved.content,
+              changeType: 'removed',
+              isDiff: true
+            });
+            pendingRemoved = null;
+          }
+
+          alignedLeftLines.push({
+            lineNum: leftLineNum++,
+            content: line.content,
+            changeType: 'unchanged',
+            isDiff: false
+          });
+          alignedRightLines.push({
+            lineNum: rightLineNum++,
+            content: line.content,
+            changeType: 'unchanged',
+            isDiff: false
+          });
+        }
+      });
+
+      const finalPending = pendingRemoved;
+      if (finalPending) {
+        alignedLeftLines.push({
+          lineNum: 0,
+          content: '',
+          changeType: 'empty',
+          isDiff: false
+        });
+        alignedRightLines.push({
+          lineNum: finalPending.lineNum,
+          content: finalPending.content,
+          changeType: 'removed',
+          isDiff: true
+        });
+      }
+    });
+
+    // 添加剩余的行
+    const maxLines = Math.max(diffResult.old_content.length, diffResult.new_content.length);
+    for (let i = alignedLeftLines.length; i < maxLines; i++) {
+      const oldContent = diffResult.old_content[i] || '';
+      const newContent = diffResult.new_content[i] || '';
+
+      if (oldContent && !newContent) {
+        alignedLeftLines.push({
+          lineNum: 0,
+          content: '',
+          changeType: 'empty',
+          isDiff: false
+        });
+        alignedRightLines.push({
+          lineNum: rightLineNum++,
+          content: oldContent,
+          changeType: 'removed',
+          isDiff: true
+        });
+        removed++;
+      } else if (!oldContent && newContent) {
+        alignedLeftLines.push({
+          lineNum: leftLineNum++,
+          content: newContent,
+          changeType: 'added',
+          isDiff: true
+        });
+        alignedRightLines.push({
+          lineNum: 0,
+          content: '',
+          changeType: 'empty',
+          isDiff: false
+        });
+        added++;
+      } else if (oldContent && newContent) {
+        alignedLeftLines.push({
+          lineNum: leftLineNum++,
+          content: newContent,
+          changeType: 'unchanged',
+          isDiff: false
+        });
+        alignedRightLines.push({
+          lineNum: rightLineNum++,
+          content: oldContent,
+          changeType: 'unchanged',
+          isDiff: false
+        });
+      }
+    }
+
+    return {
+      leftLines: alignedLeftLines,
+      rightLines: alignedRightLines,
+      isBinary: false,
+      diffStats: { added, removed, changed }
+    };
+  } catch (e) {
+    console.error('Failed to load diff:', e);
+    return null;
+  }
+};
+
+// 选择文件 - 支持多标签
 const selectFile = async (path: string) => {
   const findFile = (nodes: FileNode[]): FileNode | null => {
     for (const node of nodes) {
@@ -962,227 +1184,170 @@ const selectFile = async (path: string) => {
   const file = findFile(fileTree.value);
   if (!file) return;
 
-  currentFile.value = file;
+  // 检查是否已有相同文件的标签
+  const existingTab = tabs.value.find(tab => tab.path === path && tab.projectPath === currentPath.value);
+  if (existingTab) {
+    // 切换到已有标签
+    await activateTab(existingTab.id);
+    return;
+  }
 
-  try {
-    const workContent = await invoke<string>('read_file_content', {
-      filePath: `${currentPath.value}/${file.path}`
-    });
+  // 创建新标签
+  const fileExtension = path.split('.').pop() || '';
+  const newTab: Tab = {
+    id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+    name: file.name,
+    path: file.path,
+    projectPath: currentPath.value,
+    fileType: fileExtension,
+    isModified: false,
+    leftLines: [],
+    rightLines: [],
+    isBinary: false,
+    diffStats: null,
+    scrollTop: 0
+  };
 
-    // 根据文件状态选择比较方式
-    // Added: 新文件，与空内容比较
-    // Modified: 修改的文件，与 HEAD 比较
-    let indexContent = '';
-    const fileStatus = file.status?.toLowerCase();
-    
-    if (fileStatus === 'added') {
-      // 新添加的文件，旧版本为空
-      indexContent = '';
+  // 加载文件内容
+  const diffResult = await loadFileDiff(file);
+  if (diffResult) {
+    newTab.leftLines = diffResult.leftLines;
+    newTab.rightLines = diffResult.rightLines;
+    newTab.isBinary = diffResult.isBinary;
+    newTab.diffStats = diffResult.diffStats;
+  }
+
+  tabs.value.push(newTab);
+  activeTabId.value = newTab.id;
+
+  // 更新当前显示
+  updateCurrentViewFromTab(newTab);
+};
+
+// 从标签更新当前视图
+const updateCurrentViewFromTab = (tab: Tab) => {
+  currentFile.value = {
+    name: tab.name,
+    path: tab.path,
+    type: 'file',
+    status: '',
+    children: []
+  };
+  leftLines.value = tab.leftLines;
+  rightLines.value = tab.rightLines;
+  isBinary.value = tab.isBinary;
+  diffStats.value = tab.diffStats;
+};
+
+// 激活标签
+const activateTab = async (tabId: string) => {
+  const tab = tabs.value.find(t => t.id === tabId);
+  if (!tab) return;
+
+  activeTabId.value = tabId;
+
+  // 如果项目不同，切换项目
+  if (tab.projectPath !== currentPath.value) {
+    currentPath.value = tab.projectPath;
+    await loadFileTree(tab.projectPath);
+    await invoke('start_file_watcher', { repoPath: tab.projectPath });
+  }
+
+  updateCurrentViewFromTab(tab);
+};
+
+// 关闭标签
+const closeTab = (tabId: string) => {
+  const index = tabs.value.findIndex(t => t.id === tabId);
+  if (index === -1) return;
+
+  tabs.value.splice(index, 1);
+
+  // 如果关闭的是当前标签，切换到其他标签
+  if (activeTabId.value === tabId) {
+    if (tabs.value.length > 0) {
+      // 切换到前一个标签，如果没有则切换到第一个
+      const newIndex = Math.min(index, tabs.value.length - 1);
+      const newTab = tabs.value[newIndex];
+      activateTab(newTab.id);
     } else {
-      // 修改的文件，获取 HEAD 版本
-      try {
-        indexContent = await invoke<string>('get_file_content_at_revision', {
-          repoPath: currentPath.value,
-          filePath: file.path,
-          revision: 'HEAD'
-        });
-      } catch (e) {
-        // 如果获取失败，视为空内容
-        indexContent = '';
-      }
+      // 没有标签了，清空视图
+      activeTabId.value = '';
+      currentFile.value = null;
+      leftLines.value = [];
+      rightLines.value = [];
+      isBinary.value = false;
+      diffStats.value = null;
     }
+  }
+};
 
-    isBinary.value = workContent === '[二进制文件]' || indexContent === '[二进制文件]';
+// 关闭所有标签
+const closeAllTabs = () => {
+  tabs.value = [];
+  activeTabId.value = '';
+  currentFile.value = null;
+  leftLines.value = [];
+  rightLines.value = [];
+  isBinary.value = false;
+  diffStats.value = null;
+};
 
-    if (!isBinary.value) {
-      const diffResult = await invoke<FileDiff>('compare_strings', {
-        oldContent: indexContent,
-        newContent: workContent
-      });
+// 关闭其他标签
+const closeOtherTabs = (tabId: string) => {
+  const tab = tabs.value.find(t => t.id === tabId);
+  if (!tab) return;
 
-      // 构建对齐的行列表
-      const alignedLeftLines: DiffLine[] = [];
-      const alignedRightLines: DiffLine[] = [];
+  tabs.value = [tab];
+  activeTabId.value = tabId;
+  updateCurrentViewFromTab(tab);
+};
 
-      let added = 0, removed = 0, changed = 0;
-      let leftLineNum = 1;
-      let rightLineNum = 1;
+// 关闭右侧标签
+const closeTabsToRight = (tabId: string) => {
+  const index = tabs.value.findIndex(t => t.id === tabId);
+  if (index === -1) return;
 
-      diffResult.hunks.forEach(hunk => {
-        // 首先添加未更改的行（上下文）
-        for (let i = 0; i < Math.min(hunk.old_start - 1, hunk.new_start - 1); i++) {
-          const oldContent = diffResult.old_content[i] || '';
-          const newContent = diffResult.new_content[i] || '';
+  tabs.value = tabs.value.slice(0, index + 1);
 
-          alignedLeftLines.push({
-            lineNum: leftLineNum++,
-            content: newContent,
-            changeType: 'unchanged',
-            isDiff: false
-          });
-          alignedRightLines.push({
-            lineNum: rightLineNum++,
-            content: oldContent,
-            changeType: 'unchanged',
-            isDiff: false
-          });
-        }
-
-        // 处理 hunks 中的每一行
-        let pendingRemoved: { content: string; lineNum: number } | null = null;
-
-        hunk.lines.forEach(line => {
-          if (line.change_type === 'removed') {
-            // 暂存删除的行
-            pendingRemoved = {
-              content: line.content,
-              lineNum: rightLineNum++
-            };
-            removed++;
-          } else if (line.change_type === 'added') {
-            if (pendingRemoved) {
-              // 有对应的删除行，显示为修改
-              alignedLeftLines.push({
-                lineNum: leftLineNum++,
-                content: line.content,
-                changeType: 'changed',
-                isDiff: true
-              });
-              alignedRightLines.push({
-                lineNum: pendingRemoved.lineNum,
-                content: pendingRemoved.content,
-                changeType: 'changed',
-                isDiff: true
-              });
-              pendingRemoved = null;
-              changed++;
-            } else {
-              // 纯新增，左边显示空行
-              alignedLeftLines.push({
-                lineNum: leftLineNum++,
-                content: line.content,
-                changeType: 'added',
-                isDiff: true
-              });
-              alignedRightLines.push({
-                lineNum: 0,
-                content: '',
-                changeType: 'empty',
-                isDiff: false
-              });
-              added++;
-            }
-          } else {
-            // 处理待删除的行（如果没有对应的添加）
-            if (pendingRemoved) {
-              alignedLeftLines.push({
-                lineNum: 0,
-                content: '',
-                changeType: 'empty',
-                isDiff: false
-              });
-              alignedRightLines.push({
-                lineNum: pendingRemoved.lineNum,
-                content: pendingRemoved.content,
-                changeType: 'removed',
-                isDiff: true
-              });
-              pendingRemoved = null;
-            }
-
-            // 未更改的行
-            alignedLeftLines.push({
-              lineNum: leftLineNum++,
-              content: line.content,
-              changeType: 'unchanged',
-              isDiff: false
-            });
-            alignedRightLines.push({
-              lineNum: rightLineNum++,
-              content: line.content,
-              changeType: 'unchanged',
-              isDiff: false
-            });
-          }
-        });
-
-        // 处理最后待删除的行
-        if (pendingRemoved) {
-          alignedLeftLines.push({
-            lineNum: 0,
-            content: '',
-            changeType: 'empty',
-            isDiff: false
-          });
-          alignedRightLines.push({
-            lineNum: pendingRemoved.lineNum,
-            content: pendingRemoved.content,
-            changeType: 'removed',
-            isDiff: true
-          });
-        }
-      });
-
-      // 添加剩余的行
-      const maxLines = Math.max(diffResult.old_content.length, diffResult.new_content.length);
-      for (let i = alignedLeftLines.length; i < maxLines; i++) {
-        const oldContent = diffResult.old_content[i] || '';
-        const newContent = diffResult.new_content[i] || '';
-
-        if (oldContent && !newContent) {
-          // 只有旧内容，是删除
-          alignedLeftLines.push({
-            lineNum: 0,
-            content: '',
-            changeType: 'empty',
-            isDiff: false
-          });
-          alignedRightLines.push({
-            lineNum: rightLineNum++,
-            content: oldContent,
-            changeType: 'removed',
-            isDiff: true
-          });
-          removed++;
-        } else if (!oldContent && newContent) {
-          // 只有新内容，是新增
-          alignedLeftLines.push({
-            lineNum: leftLineNum++,
-            content: newContent,
-            changeType: 'added',
-            isDiff: true
-          });
-          alignedRightLines.push({
-            lineNum: 0,
-            content: '',
-            changeType: 'empty',
-            isDiff: false
-          });
-          added++;
-        } else if (oldContent && newContent) {
-          // 都有内容
-          alignedLeftLines.push({
-            lineNum: leftLineNum++,
-            content: newContent,
-            changeType: 'unchanged',
-            isDiff: false
-          });
-          alignedRightLines.push({
-            lineNum: rightLineNum++,
-            content: oldContent,
-            changeType: 'unchanged',
-            isDiff: false
-          });
-        }
-      }
-
-      leftLines.value = alignedLeftLines;
-      rightLines.value = alignedRightLines;
-      diffStats.value = { added, removed, changed };
+  // 如果当前标签被关闭了，激活最后一个
+  if (!tabs.value.find(t => t.id === activeTabId.value)) {
+    const lastTab = tabs.value[tabs.value.length - 1];
+    if (lastTab) {
+      activateTab(lastTab.id);
     }
-  } catch (e) {
-    console.error('Failed to load diff:', e);
-    alert('加载差异失败: ' + e);
+  }
+};
+
+// 更新标签的文件状态（用于文件变更检测）
+const updateTabFileStatus = async (filePath: string) => {
+  const tab = tabs.value.find(t => t.path === filePath && t.projectPath === currentPath.value);
+  if (!tab) return;
+
+  // 重新加载文件内容
+  const fileNode: FileNode = {
+    name: tab.name,
+    path: tab.path,
+    type: 'file',
+    status: '',
+    children: []
+  };
+
+  const diffResult = await loadFileDiff(fileNode);
+  if (diffResult) {
+    tab.leftLines = diffResult.leftLines;
+    tab.rightLines = diffResult.rightLines;
+    tab.isBinary = diffResult.isBinary;
+    tab.diffStats = diffResult.diffStats;
+    tab.isModified = true;
+
+    // 如果是当前标签，更新视图
+    if (tab.id === activeTabId.value) {
+      leftLines.value = tab.leftLines;
+      rightLines.value = tab.rightLines;
+      isBinary.value = tab.isBinary;
+      diffStats.value = tab.diffStats;
+    }
   }
 };
 
