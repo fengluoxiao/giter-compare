@@ -3,10 +3,6 @@
     <!-- 工具栏 -->
     <div class="toolbar">
       <div class="toolbar-left">
-        <button class="btn btn-primary" @click="openFolder">
-          <span class="btn-icon">📂</span>
-          打开文件夹
-        </button>
         <button class="btn btn-secondary" @click="showCompareFileDialog">
           <span class="btn-icon">📄</span>
           比对文件
