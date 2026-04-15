@@ -1,35 +1,18 @@
 <template>
   <div class="app" :data-theme="theme">
     <!-- 工具栏 -->
-    <div class="toolbar">
-      <div class="toolbar-left">
-        <button class="btn btn-secondary" @click="showCompareFileDialog">
-          <span class="btn-icon">📄</span>
-          比对文件
-        </button>
-        <button class="btn btn-secondary" @click="showTextCompare = true">
-          <span class="btn-icon">📝</span>
-          比对文本
-        </button>
-      </div>
-      <div class="toolbar-center">
-        <span class="path-display">{{ currentPath || '未选择文件夹' }}</span>
-      </div>
-      <div class="toolbar-right">
-        <button class="btn btn-secondary" @click="toggleTheme" title="切换主题">
-          {{ theme === 'dark' ? '☀️ 浅色' : '🌙 深色' }}
-        </button>
-        <button class="btn btn-secondary" @click="navigatePrev" title="上一个" :disabled="!hasPrev">
-          ⬆️ 上一个
-        </button>
-        <button class="btn btn-secondary" @click="navigateNext" title="下一个" :disabled="!hasNext">
-          ⬇️ 下一个
-        </button>
-        <button class="btn btn-secondary" @click="refresh" title="刷新">
-          🔄 刷新
-        </button>
-      </div>
-    </div>
+    <Toolbar
+      :theme="theme"
+      :current-path="currentPath"
+      :has-prev="hasPrev"
+      :has-next="hasNext"
+      @compare-file="showCompareFileDialog"
+      @compare-text="showTextCompare = true"
+      @toggle-theme="toggleTheme"
+      @navigate-prev="navigatePrev"
+      @navigate-next="navigateNext"
+      @refresh="refresh"
+    />
 
     <!-- 标签栏 -->
     <TabBar
@@ -46,278 +29,80 @@
     <!-- 主内容区 -->
     <div class="main-container">
       <!-- 左侧项目列表 -->
-      <aside 
-        class="project-sidebar" 
-        :class="{ collapsed: isProjectSidebarCollapsed }"
-        :style="{ width: isProjectSidebarCollapsed ? '40px' : projectSidebarWidth + 'px' }"
-      >
-        <div class="project-header">
-          <h3 v-show="!isProjectSidebarCollapsed">项目列表</h3>
-          <div class="project-header-buttons">
-            <button class="btn btn-icon btn-add" @click="showAddProjectDialog" title="添加项目">
-              <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
-              </svg>
-            </button>
-            <button
-              class="btn btn-icon btn-collapse"
-              @click="toggleProjectSidebar"
-              :title="isProjectSidebarCollapsed ? '展开' : '折叠'"
-            >
-              <svg v-if="isProjectSidebarCollapsed" viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                <path d="M8.59 16.59L13.17 12 8.59 7.41 10 6l6 6-6 6-1.41-1.41z"/>
-              </svg>
-              <svg v-else viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
-                <path d="M15.41 7.41L10.83 12l4.58 4.59L14 18l-6-6 6-6 1.41 1.41z"/>
-              </svg>
-            </button>
-          </div>
-        </div>
-        <div v-show="!isProjectSidebarCollapsed" class="project-list">
-          <div
-            v-for="project in projects"
-            :key="project.id"
-            class="project-item"
-            :class="{ active: currentProjectId === project.id }"
-            @click="switchProject(project)"
-          >
-            <span class="project-icon">📁</span>
-            <span class="project-name">{{ project.name }}</span>
-            <button
-              class="btn btn-icon btn-delete"
-              @click.stop="removeProject(project.id)"
-              title="删除项目"
-            >
-              <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
-                <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
-              </svg>
-            </button>
-          </div>
-          <div v-if="projects.length === 0" class="empty-state">
-            点击 + 添加 Git 项目
-          </div>
-        </div>
-        <!-- 拖拽调整宽度的手柄 -->
-        <div 
-          v-show="!isProjectSidebarCollapsed"
-          class="resize-handle"
-          @mousedown="startResizeProjectSidebar"
-        ></div>
-      </aside>
+      <ProjectSidebar
+        :projects="projects"
+        :current-project-id="currentProjectId"
+        :is-collapsed="isProjectSidebarCollapsed"
+        :width="projectSidebarWidth"
+        @add-project="showAddProjectDialog"
+        @toggle-collapse="toggleProjectSidebar"
+        @switch-project="switchProject"
+        @remove-project="removeProject"
+        @start-resize="startResizeProjectSidebar"
+      />
 
       <!-- 中间文件树 -->
-      <aside 
-        class="sidebar"
-        :class="{ collapsed: isFileSidebarCollapsed }"
-        :style="{ width: isFileSidebarCollapsed ? '40px' : fileSidebarWidth + 'px' }"
-      >
-        <div class="sidebar-header">
-          <div class="sidebar-header-title">
-            <h3 v-show="!isFileSidebarCollapsed">文件变更</h3>
-            <button 
-              class="btn btn-icon btn-collapse" 
-              @click="toggleFileSidebar"
-              :title="isFileSidebarCollapsed ? '展开' : '折叠'"
-            >
-              {{ isFileSidebarCollapsed ? '▶' : '◀' }}
-            </button>
-          </div>
-          <div v-show="!isFileSidebarCollapsed" class="filter-tabs">
-            <button 
-              class="tab" 
-              :class="{ active: viewMode === 'working' }"
-              @click="viewMode = 'working'"
-            >
-              工作区
-            </button>
-            <button 
-              class="tab" 
-              :class="{ active: viewMode === 'staged' }"
-              @click="viewMode = 'staged'"
-            >
-              暂存区
-            </button>
-          </div>
-          <div class="view-toggle">
-            <label class="toggle-label">
-              <input 
-                type="checkbox" 
-                v-model="showAllFiles"
-                @change="onShowAllFilesChange"
-              />
-              <span class="toggle-text">显示所有文件</span>
-            </label>
-          </div>
-        </div>
-        <div v-show="!isFileSidebarCollapsed" class="file-list">
-          <FileTree
-            v-if="fileTree.length > 0"
-            :nodes="fileTree"
-            @select="selectFile"
-            @toggle="toggleDirectory"
-          />
-          <div v-else class="empty-state">
-            选择左侧项目或点击"打开文件夹"
-          </div>
-        </div>
-        <!-- 拖拽调整宽度的手柄 -->
-        <div 
-          v-show="!isFileSidebarCollapsed"
-          class="resize-handle resize-handle-file"
-          @mousedown="startResizeFileSidebar"
-        ></div>
-      </aside>
+      <FileTreeSidebar
+        :file-tree="fileTree"
+        :view-mode="viewMode"
+        :show-all-files="showAllFiles"
+        :is-collapsed="isFileSidebarCollapsed"
+        :width="fileSidebarWidth"
+        @update:view-mode="viewMode = $event"
+        @update:show-all-files="onShowAllFilesChange"
+        @toggle-collapse="toggleFileSidebar"
+        @select-file="selectFile"
+        @toggle-directory="toggleDirectory"
+        @start-resize="startResizeFileSidebar"
+      />
 
       <!-- 右侧比对区 -->
-      <div class="diff-viewer">
-        <div v-if="currentFile" class="file-info-bar">
-          <div class="file-info">
-            <span class="file-label">旧版本</span>
-            <span class="file-path">{{ currentFile.path }}</span>
-          </div>
-          <div class="file-info">
-            <span class="file-label">新版本</span>
-            <span class="file-path">{{ currentFile.path }}</span>
-          </div>
-        </div>
-        
-        <div v-if="currentFile" class="diff-content">
-          <div v-if="isBinary" class="binary-placeholder">
-            [二进制文件]
-          </div>
-          <template v-else>
-            <div class="diff-pane">
-              <div class="pane-header">
-                <span class="pane-title">{{ viewMode === 'working' ? '工作区' : '暂存区' }}</span>
-              </div>
-              <div class="code-content" ref="leftCodeContent" @scroll="syncScroll('left')">
-                <DiffLines :lines="leftLines" />
-              </div>
-            </div>
-            <div class="diff-divider"></div>
-            <div class="diff-pane">
-              <div class="pane-header">
-                <span class="pane-title">HEAD</span>
-              </div>
-              <div class="code-content" ref="rightCodeContent" @scroll="syncScroll('right')">
-                <DiffLines :lines="rightLines" />
-              </div>
-            </div>
-            <!-- Minimap -->
-            <Minimap
-              :lines="leftLines"
-              :scroll-top="leftScrollTop"
-              :container-height="codeContainerHeight"
-              :content-height="codeContentHeight"
-              @jump="handleMinimapJump"
-            />
-          </template>
-        </div>
-        
-        <div v-else class="empty-state">
-          选择左侧文件查看差异
-        </div>
-
-        <div v-if="currentFile && diffStats" class="diff-stats">
-          <span class="stat added">+{{ diffStats.added }}</span>
-          <span class="stat removed">-{{ diffStats.removed }}</span>
-          <span class="stat changed">~{{ diffStats.changed }}</span>
-        </div>
-      </div>
+      <DiffViewer
+        :current-file="currentFile"
+        :left-lines="leftLines"
+        :right-lines="rightLines"
+        :is-binary="isBinary"
+        :diff-stats="diffStats"
+        :view-mode="viewMode"
+        @scroll="handleScroll"
+      />
     </div>
 
     <!-- 文件比对对话框 -->
-    <div class="dialog" :class="{ open: showCompareFile }">
-      <div class="dialog-content">
-        <h3>选择要比对的文件</h3>
-        <div class="text-inputs">
-          <div class="text-input-group">
-            <label>旧版本</label>
-            <button class="btn btn-secondary" @click="selectOldFile">选择文件</button>
-            <span v-if="compareOldPath" class="selected-path">{{ compareOldPath }}</span>
-          </div>
-          <div class="text-input-group">
-            <label>新版本</label>
-            <button class="btn btn-secondary" @click="selectNewFile">选择文件</button>
-            <span v-if="compareNewPath" class="selected-path">{{ compareNewPath }}</span>
-          </div>
-        </div>
-        <div class="dialog-actions">
-          <button class="btn btn-secondary" @click="showCompareFile = false">取消</button>
-          <button class="btn btn-primary" @click="doFileCompare" :disabled="!compareOldPath || !compareNewPath">比对</button>
-        </div>
-      </div>
-    </div>
+    <FileCompareDialog
+      :open="showCompareFile"
+      :old-path="compareOldPath"
+      :new-path="compareNewPath"
+      @close="showCompareFile = false"
+      @select-old="selectOldFile"
+      @select-new="selectNewFile"
+      @compare="doFileCompare"
+    />
 
     <!-- 文本比对对话框 -->
-    <div class="dialog" :class="{ open: showTextCompare }">
-      <div class="dialog-content">
-        <h3>文本比对</h3>
-        <div class="text-inputs">
-          <div class="text-input-group">
-            <label>文本 1</label>
-            <textarea v-model="compareText1" placeholder="在此粘贴第一段文本..."></textarea>
-          </div>
-          <div class="text-input-group">
-            <label>文本 2</label>
-            <textarea v-model="compareText2" placeholder="在此粘贴第二段文本..."></textarea>
-          </div>
-        </div>
-        <div class="dialog-actions">
-          <button class="btn btn-secondary" @click="showTextCompare = false">取消</button>
-          <button class="btn btn-primary" @click="doTextCompare">比对</button>
-        </div>
-      </div>
-    </div>
+    <TextCompareDialog
+      :open="showTextCompare"
+      v-model:text1="compareText1"
+      v-model:text2="compareText2"
+      @close="showTextCompare = false"
+      @compare="doTextCompare"
+    />
 
     <!-- 添加项目对话框 -->
-    <div class="dialog" :class="{ open: showAddProject }">
-      <div class="dialog-content dialog-content-large">
-        <h3>添加项目</h3>
-        <div class="add-project-form">
-          <div class="form-row">
-            <div class="form-group form-group-name">
-              <label>项目备注（可选）</label>
-              <input v-model="newProjectName" placeholder="留空则使用文件夹名称" />
-            </div>
-            <button class="btn btn-primary" @click="selectProjectPath">选择文件夹</button>
-          </div>
-        </div>
-
-        <!-- 待添加项目列表 -->
-        <div v-if="pendingProjects.length > 0" class="pending-projects">
-          <h4>待添加项目 ({{ pendingProjects.length }})</h4>
-          <div class="pending-list">
-            <div v-for="(item, index) in pendingProjects" :key="index" class="pending-item">
-              <div class="pending-name-wrapper">
-                <input
-                  v-if="editingPendingIndex === index"
-                  v-model="editingPendingName"
-                  class="pending-name-input"
-                  @blur="savePendingName(index)"
-                  @keyup.enter="savePendingName(index)"
-                  @keyup.esc="cancelEditPendingName"
-                  ref="pendingNameInput"
-                />
-                <span
-                  v-else
-                  class="pending-name editable"
-                  @click="startEditPendingName(index, item.name)"
-                  title="点击修改备注"
-                >{{ item.name }}</span>
-              </div>
-              <span class="pending-path">{{ item.path }}</span>
-              <button class="btn btn-icon btn-remove" @click="removeFromPending(index)" title="删除">✕</button>
-            </div>
-          </div>
-        </div>
-
-        <div class="dialog-actions">
-          <button class="btn btn-secondary" @click="closeAddProjectDialog">取消</button>
-          <button class="btn btn-primary" @click="confirmAddProjects" :disabled="pendingProjects.length === 0">确定添加 ({{ pendingProjects.length }})</button>
-        </div>
-      </div>
-    </div>
+    <AddProjectDialog
+      :open="showAddProject"
+      v-model:project-name="newProjectName"
+      :pending-projects="pendingProjects"
+      :editing-index="editingPendingIndex"
+      v-model:editing-name="editingPendingName"
+      @close="closeAddProjectDialog"
+      @select-path="selectProjectPath"
+      @remove="removeFromPending"
+      @confirm="confirmAddProjects"
+      @start-edit="startEditPendingName"
+      @save-name="savePendingName"
+      @cancel-edit="cancelEditPendingName"
+    />
   </div>
 </template>
 
@@ -326,10 +111,12 @@ import { ref, onMounted, onUnmounted, computed } from 'vue';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
-import FileTree from './FileTree.vue';
-import DiffLines from './DiffLines.vue';
-import Minimap from './Minimap.vue';
+import Toolbar from './Toolbar.vue';
+import ProjectSidebar from './ProjectSidebar.vue';
+import FileTreeSidebar from './FileTreeSidebar.vue';
+import DiffViewer from './DiffViewer.vue';
 import TabBar, { type Tab } from './TabBar.vue';
+import { FileCompareDialog, TextCompareDialog, AddProjectDialog } from './dialogs';
 
 interface FileNode {
   name: string;
@@ -377,11 +164,17 @@ interface Project {
   path: string;
 }
 
-const theme = ref('dark');
+// 主题和视图状态
+const theme = ref('light');
 const viewMode = ref<'working' | 'staged'>('working');
 const showAllFiles = ref(true);
+
+// 对话框状态
 const showCompareFile = ref(false);
 const showTextCompare = ref(false);
+const showAddProject = ref(false);
+
+// 文件和数据状态
 const fileTree = ref<FileNode[]>([]);
 const currentFile = ref<FileNode | null>(null);
 const currentPath = ref('');
@@ -397,13 +190,11 @@ const activeTabId = ref<string>('');
 // 多项目支持
 const projects = ref<Project[]>([]);
 const currentProjectId = ref<string>('');
-const showAddProject = ref(false);
 const newProjectName = ref('');
 const newProjectPath = ref('');
 const pendingProjects = ref<{ name: string; path: string }[]>([]);
 const editingPendingIndex = ref<number>(-1);
 const editingPendingName = ref('');
-const pendingNameInput = ref<HTMLInputElement | null>(null);
 
 // 侧边栏宽度和折叠状态
 const projectSidebarWidth = ref(200);
@@ -413,16 +204,7 @@ const isFileSidebarCollapsed = ref(false);
 const isResizingProject = ref(false);
 const isResizingFile = ref(false);
 
-// 代码内容区域 refs，用于同步滚动
-const leftCodeContent = ref<HTMLElement | null>(null);
-const rightCodeContent = ref<HTMLElement | null>(null);
-let isSyncing = false;
-
-// Minimap 相关
-const leftScrollTop = ref(0);
-const codeContainerHeight = ref(0);
-const codeContentHeight = ref(0);
-
+// 比对相关
 const compareOldPath = ref('');
 const compareNewPath = ref('');
 const compareText1 = ref('');
@@ -453,33 +235,23 @@ const currentFileIndex = computed(() => {
   return allFiles.value.findIndex(f => f.path === currentFile.value!.path);
 });
 
-// 是否有上一个
+// 是否有上一个/下一个
 const hasPrev = computed(() => currentFileIndex.value > 0);
-
-// 是否有下一个
 const hasNext = computed(() => currentFileIndex.value < allFiles.value.length - 1);
 
 onMounted(async () => {
   const savedTheme = localStorage.getItem('theme');
-  if (savedTheme) {
-    theme.value = savedTheme;
-  } else {
-    // 默认浅色模式
-    theme.value = 'light';
-  }
+  theme.value = savedTheme || 'light';
 
   const savedShowAll = localStorage.getItem('showAllFiles');
   if (savedShowAll !== null) {
     showAllFiles.value = savedShowAll === 'true';
   }
 
-  // 加载保存的项目列表
   loadProjects();
 
-  unlistenFileChange = await listen('file-changed', (event) => {
-    console.log('File changed event received:', event);
+  unlistenFileChange = await listen('file-changed', () => {
     if (currentPath.value) {
-      console.log('Refreshing due to file change');
       refresh();
     }
   });
@@ -491,34 +263,18 @@ onUnmounted(() => {
   }
 });
 
+// 主题切换
 const toggleTheme = () => {
   theme.value = theme.value === 'dark' ? 'light' : 'dark';
   localStorage.setItem('theme', theme.value);
 };
 
-const onShowAllFilesChange = () => {
+// 显示所有文件切换
+const onShowAllFilesChange = (value: boolean) => {
+  showAllFiles.value = value;
   localStorage.setItem('showAllFiles', showAllFiles.value.toString());
   if (currentPath.value) {
     loadFileTree(currentPath.value);
-  }
-};
-
-const openFolder = async () => {
-  try {
-    const selected = await open({
-      directory: true,
-      multiple: false,
-      title: '选择 Git 仓库文件夹'
-    });
-
-    if (selected && typeof selected === 'string') {
-      currentPath.value = selected;
-      await loadFileTree(selected);
-      await invoke('start_file_watcher', { repoPath: selected });
-    }
-  } catch (e) {
-    console.error('Failed to open folder:', e);
-    alert('打开文件夹失败: ' + e);
   }
 };
 
@@ -538,27 +294,19 @@ const selectProjectPath = async () => {
     });
 
     if (selected && typeof selected === 'string') {
-      // 检查是否已存在
       const exists = pendingProjects.value.some(p => p.path === selected);
       if (exists) {
         alert('该项目已添加到列表中');
         return;
       }
 
-      // 获取项目名称
       let projectName = newProjectName.value.trim();
       if (!projectName) {
         const parts = selected.split('/');
         projectName = parts[parts.length - 1] || parts[parts.length - 2] || '新项目';
       }
 
-      // 直接添加到列表
-      pendingProjects.value.push({
-        name: projectName,
-        path: selected
-      });
-
-      // 清空备注输入，准备添加下一个
+      pendingProjects.value.push({ name: projectName, path: selected });
       newProjectName.value = '';
     }
   } catch (e) {
@@ -566,52 +314,17 @@ const selectProjectPath = async () => {
   }
 };
 
-// 批量添加项目相关方法
-const addToPendingList = () => {
-  if (!newProjectPath.value) return;
-
-  // 如果没有输入备注名称，使用文件夹名
-  let projectName = newProjectName.value.trim();
-  if (!projectName) {
-    const parts = newProjectPath.value.split('/');
-    projectName = parts[parts.length - 1] || parts[parts.length - 2] || '新项目';
-  }
-
-  // 检查是否已存在
-  const exists = pendingProjects.value.some(p => p.path === newProjectPath.value);
-  if (exists) {
-    alert('该项目已添加到列表中');
-    return;
-  }
-
-  pendingProjects.value.push({
-    name: projectName,
-    path: newProjectPath.value
-  });
-
-  // 清空输入，准备添加下一个
-  newProjectName.value = '';
-  newProjectPath.value = '';
-};
-
 const removeFromPending = (index: number) => {
   pendingProjects.value.splice(index, 1);
-  // 如果正在编辑的项目被删除，取消编辑状态
   if (editingPendingIndex.value === index) {
     editingPendingIndex.value = -1;
     editingPendingName.value = '';
   }
 };
 
-// 编辑待添加项目名称
 const startEditPendingName = (index: number, name: string) => {
   editingPendingIndex.value = index;
   editingPendingName.value = name;
-  // 下一个 tick 聚焦输入框
-  setTimeout(() => {
-    pendingNameInput.value?.focus();
-    pendingNameInput.value?.select();
-  }, 0);
 };
 
 const savePendingName = (index: number) => {
@@ -632,12 +345,13 @@ const closeAddProjectDialog = () => {
   pendingProjects.value = [];
   newProjectName.value = '';
   newProjectPath.value = '';
+  editingPendingIndex.value = -1;
+  editingPendingName.value = '';
 };
 
 const confirmAddProjects = async () => {
   if (pendingProjects.value.length === 0) return;
 
-  // 批量添加项目
   for (const item of pendingProjects.value) {
     const project: Project = {
       id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
@@ -649,42 +363,10 @@ const confirmAddProjects = async () => {
 
   saveProjects();
 
-  // 切换到最后一个添加的项目
   const lastProject = projects.value[projects.value.length - 1];
   await switchProject(lastProject);
 
-  // 关闭对话框并清空
-  showAddProject.value = false;
-  pendingProjects.value = [];
-  newProjectName.value = '';
-  newProjectPath.value = '';
-};
-
-const addProject = async () => {
-  if (!newProjectPath.value) return;
-
-  // 如果没有输入备注名称，使用文件夹名
-  let projectName = newProjectName.value.trim();
-  if (!projectName) {
-    const parts = newProjectPath.value.split('/');
-    projectName = parts[parts.length - 1] || parts[parts.length - 2] || '新项目';
-  }
-
-  const project: Project = {
-    id: Date.now().toString(),
-    name: projectName,
-    path: newProjectPath.value
-  };
-
-  projects.value.push(project);
-  saveProjects();
-
-  // 自动切换到新项目
-  await switchProject(project);
-
-  showAddProject.value = false;
-  newProjectName.value = '';
-  newProjectPath.value = '';
+  closeAddProjectDialog();
 };
 
 const removeProject = (projectId: string) => {
@@ -694,7 +376,6 @@ const removeProject = (projectId: string) => {
   projects.value.splice(index, 1);
   saveProjects();
 
-  // 如果删除的是当前项目，清空当前状态
   if (currentProjectId.value === projectId) {
     currentProjectId.value = '';
     currentPath.value = '';
@@ -724,7 +405,6 @@ const loadProjects = () => {
     }
   }
 
-  // 加载侧边栏状态
   const savedProjectWidth = localStorage.getItem('giter-project-sidebar-width');
   const savedFileWidth = localStorage.getItem('giter-file-sidebar-width');
   const savedProjectCollapsed = localStorage.getItem('giter-project-sidebar-collapsed');
@@ -802,24 +482,17 @@ const buildFileTreeRecursive = async (
   parentPath: string = ''
 ): Promise<FileNode[]> => {
   const root: FileNode[] = [];
-
-  // 创建更改状态的查找表
   const changeMap = new Map<string, string>();
   changes.forEach(c => changeMap.set(c.path, c.status));
 
-  // 过滤掉隐藏文件和不需要的目录
   const filteredEntries = entries.filter(entry => {
     const name = entry.name;
-    // 隐藏文件和目录
     if (name.startsWith('.')) return false;
-    // node_modules
     if (name === 'node_modules') return false;
-    // target 目录
     if (name === 'target') return false;
     return true;
   });
 
-  // 排序：目录在前，文件在后
   filteredEntries.sort((a, b) => {
     const aIsDir = a.is_directory;
     const bIsDir = b.is_directory;
@@ -832,19 +505,15 @@ const buildFileTreeRecursive = async (
     const relativePath = parentPath ? `${parentPath}/${entry.name}` : entry.name;
 
     if (entry.is_directory) {
-      // 递归读取子目录
       let children: FileNode[] = [];
       try {
         const subPath = `${basePath}/${relativePath}`;
-        console.log('Reading subdirectory:', subPath);
         const subEntries = await invoke<any[]>('read_directory', { path: subPath });
-        console.log('Subdirectory entries:', subEntries);
         children = await buildFileTreeRecursive(subEntries, basePath, changes, relativePath);
       } catch (e) {
         console.error(`Failed to read subdirectory: ${relativePath}`, e);
       }
 
-      // 如果不显示所有文件，且子目录中没有变更文件，则跳过此目录
       if (!showAllFiles.value && children.length === 0) {
         continue;
       }
@@ -857,10 +526,8 @@ const buildFileTreeRecursive = async (
         expanded: false
       });
     } else {
-      // 检查是否有 Git 更改状态
       const status = changeMap.get(relativePath);
 
-      // 如果不显示所有文件，且文件没有变更，则跳过
       if (!showAllFiles.value && !status) {
         continue;
       }
@@ -880,21 +547,15 @@ const buildFileTreeRecursive = async (
 
 const loadFileTree = async (path: string) => {
   try {
-    // 读取文件夹内容
     const entries = await invoke<any[]>('read_directory', { path });
 
-    // 获取 Git 更改状态
     let changes: GitStatus[] = [];
     try {
-      changes = await invoke<GitStatus[]>('get_working_tree_changes', {
-        repoPath: path
-      });
+      changes = await invoke<GitStatus[]>('get_working_tree_changes', { repoPath: path });
     } catch (e) {
-      // 如果不是 Git 仓库，忽略错误
       console.log('Not a git repository or error getting changes');
     }
 
-    // 递归构建文件树
     fileTree.value = await buildFileTreeRecursive(entries, path, changes);
   } catch (e) {
     console.error('Failed to load file tree:', e);
@@ -902,37 +563,11 @@ const loadFileTree = async (path: string) => {
   }
 };
 
-// 同步滚动函数
-const syncScroll = (source: 'left' | 'right') => {
-  if (isSyncing) return;
-  isSyncing = true;
-
-  const sourceEl = source === 'left' ? leftCodeContent.value : rightCodeContent.value;
-  const targetEl = source === 'left' ? rightCodeContent.value : leftCodeContent.value;
-
-  if (sourceEl && targetEl) {
-    targetEl.scrollTop = sourceEl.scrollTop;
-  }
-
-  // 更新 minimap 的 scrollTop
-  if (sourceEl) {
-    leftScrollTop.value = sourceEl.scrollTop;
-    codeContainerHeight.value = sourceEl.clientHeight;
-    codeContentHeight.value = sourceEl.scrollHeight;
-  }
-
-  // 使用 requestAnimationFrame 确保同步
-  requestAnimationFrame(() => {
-    isSyncing = false;
-  });
-};
-
-// 刷新 - 更新文件树和当前打开的标签
+// 刷新
 const refresh = async () => {
   if (currentPath.value) {
     await loadFileTree(currentPath.value);
 
-    // 更新所有当前项目的标签
     for (const tab of tabs.value) {
       if (tab.projectPath === currentPath.value) {
         await updateTabFileStatus(tab.path);
@@ -941,21 +576,9 @@ const refresh = async () => {
   }
 };
 
-// Minimap 跳转处理
-const handleMinimapJump = (lineIndex: number) => {
-  if (!leftCodeContent.value) return;
-  
-  // 计算目标滚动位置
-  const lineHeight = 24; // 每行高度
-  const targetScrollTop = lineIndex * lineHeight;
-  
-  leftCodeContent.value.scrollTop = targetScrollTop;
-  if (rightCodeContent.value) {
-    rightCodeContent.value.scrollTop = targetScrollTop;
-  }
-  
-  // 更新 minimap 状态
-  leftScrollTop.value = targetScrollTop;
+// 滚动处理
+const handleScroll = (scrollTop: number) => {
+  // 可以在这里添加额外的滚动处理逻辑
 };
 
 // 加载文件 diff 内容
@@ -965,7 +588,6 @@ const loadFileDiff = async (file: FileNode): Promise<{ leftLines: DiffLine[]; ri
       filePath: `${currentPath.value}/${file.path}`
     });
 
-    // 根据文件状态选择比较方式
     let indexContent = '';
     const fileStatus = file.status?.toLowerCase();
 
@@ -994,7 +616,6 @@ const loadFileDiff = async (file: FileNode): Promise<{ leftLines: DiffLine[]; ri
       newContent: workContent
     });
 
-    // 构建对齐的行列表
     const alignedLeftLines: DiffLine[] = [];
     const alignedRightLines: DiffLine[] = [];
 
@@ -1003,7 +624,6 @@ const loadFileDiff = async (file: FileNode): Promise<{ leftLines: DiffLine[]; ri
     let rightLineNum = 1;
 
     diffResult.hunks.forEach(hunk => {
-      // 首先添加未更改的行（上下文）
       for (let i = 0; i < Math.min(hunk.old_start - 1, hunk.new_start - 1); i++) {
         const oldContent = diffResult.old_content[i] || '';
         const newContent = diffResult.new_content[i] || '';
@@ -1022,15 +642,11 @@ const loadFileDiff = async (file: FileNode): Promise<{ leftLines: DiffLine[]; ri
         });
       }
 
-      // 处理 hunks 中的每一行
       let pendingRemoved: { content: string; lineNum: number } | null = null;
 
       hunk.lines.forEach(line => {
         if (line.change_type === 'removed') {
-          pendingRemoved = {
-            content: line.content,
-            lineNum: rightLineNum++
-          };
+          pendingRemoved = { content: line.content, lineNum: rightLineNum++ };
           removed++;
         } else if (line.change_type === 'added') {
           if (pendingRemoved) {
@@ -1112,7 +728,6 @@ const loadFileDiff = async (file: FileNode): Promise<{ leftLines: DiffLine[]; ri
       }
     });
 
-    // 添加剩余的行
     const maxLines = Math.max(diffResult.old_content.length, diffResult.new_content.length);
     for (let i = alignedLeftLines.length; i < maxLines; i++) {
       const oldContent = diffResult.old_content[i] || '';
@@ -1192,15 +807,12 @@ const selectFile = async (path: string) => {
   const file = findFile(fileTree.value);
   if (!file) return;
 
-  // 检查是否已有相同文件的标签
   const existingTab = tabs.value.find(tab => tab.path === path && tab.projectPath === currentPath.value);
   if (existingTab) {
-    // 切换到已有标签
     await activateTab(existingTab.id);
     return;
   }
 
-  // 创建新标签
   const fileExtension = path.split('.').pop() || '';
   const newTab: Tab = {
     id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
@@ -1216,7 +828,6 @@ const selectFile = async (path: string) => {
     scrollTop: 0
   };
 
-  // 加载文件内容
   const diffResult = await loadFileDiff(file);
   if (diffResult) {
     newTab.leftLines = diffResult.leftLines;
@@ -1228,11 +839,9 @@ const selectFile = async (path: string) => {
   tabs.value.push(newTab);
   activeTabId.value = newTab.id;
 
-  // 更新当前显示
   updateCurrentViewFromTab(newTab);
 };
 
-// 从标签更新当前视图
 const updateCurrentViewFromTab = (tab: Tab) => {
   currentFile.value = {
     name: tab.name,
@@ -1247,14 +856,12 @@ const updateCurrentViewFromTab = (tab: Tab) => {
   diffStats.value = tab.diffStats;
 };
 
-// 激活标签
 const activateTab = async (tabId: string) => {
   const tab = tabs.value.find(t => t.id === tabId);
   if (!tab) return;
 
   activeTabId.value = tabId;
 
-  // 如果项目不同，切换项目
   if (tab.projectPath !== currentPath.value) {
     currentPath.value = tab.projectPath;
     await loadFileTree(tab.projectPath);
@@ -1264,22 +871,18 @@ const activateTab = async (tabId: string) => {
   updateCurrentViewFromTab(tab);
 };
 
-// 关闭标签
 const closeTab = (tabId: string) => {
   const index = tabs.value.findIndex(t => t.id === tabId);
   if (index === -1) return;
 
   tabs.value.splice(index, 1);
 
-  // 如果关闭的是当前标签，切换到其他标签
   if (activeTabId.value === tabId) {
     if (tabs.value.length > 0) {
-      // 切换到前一个标签，如果没有则切换到第一个
       const newIndex = Math.min(index, tabs.value.length - 1);
       const newTab = tabs.value[newIndex];
       activateTab(newTab.id);
     } else {
-      // 没有标签了，清空视图
       activeTabId.value = '';
       currentFile.value = null;
       leftLines.value = [];
@@ -1290,7 +893,6 @@ const closeTab = (tabId: string) => {
   }
 };
 
-// 关闭所有标签
 const closeAllTabs = () => {
   tabs.value = [];
   activeTabId.value = '';
@@ -1301,7 +903,6 @@ const closeAllTabs = () => {
   diffStats.value = null;
 };
 
-// 关闭其他标签
 const closeOtherTabs = (tabId: string) => {
   const tab = tabs.value.find(t => t.id === tabId);
   if (!tab) return;
@@ -1311,14 +912,12 @@ const closeOtherTabs = (tabId: string) => {
   updateCurrentViewFromTab(tab);
 };
 
-// 关闭右侧标签
 const closeTabsToRight = (tabId: string) => {
   const index = tabs.value.findIndex(t => t.id === tabId);
   if (index === -1) return;
 
   tabs.value = tabs.value.slice(0, index + 1);
 
-  // 如果当前标签被关闭了，激活最后一个
   if (!tabs.value.find(t => t.id === activeTabId.value)) {
     const lastTab = tabs.value[tabs.value.length - 1];
     if (lastTab) {
@@ -1327,12 +926,10 @@ const closeTabsToRight = (tabId: string) => {
   }
 };
 
-// 更新标签的文件状态（用于文件变更检测）
 const updateTabFileStatus = async (filePath: string) => {
   const tab = tabs.value.find(t => t.path === filePath && t.projectPath === currentPath.value);
   if (!tab) return;
 
-  // 重新加载文件内容
   const fileNode: FileNode = {
     name: tab.name,
     path: tab.path,
@@ -1349,7 +946,6 @@ const updateTabFileStatus = async (filePath: string) => {
     tab.diffStats = diffResult.diffStats;
     tab.isModified = true;
 
-    // 如果是当前标签，更新视图
     if (tab.id === activeTabId.value) {
       leftLines.value = tab.leftLines;
       rightLines.value = tab.rightLines;
@@ -1377,6 +973,7 @@ const navigateNext = () => {
   }
 };
 
+// 文件比对对话框
 const showCompareFileDialog = () => {
   compareOldPath.value = '';
   compareNewPath.value = '';
@@ -1418,14 +1015,14 @@ const doFileCompare = async () => {
       newContent
     });
 
-    leftLines.value = diffResult.new_content.map((content, idx) => ({
+    const newLeftLines: DiffLine[] = diffResult.new_content.map((content, idx) => ({
       lineNum: idx + 1,
       content,
       changeType: 'unchanged',
       isDiff: false
     }));
 
-    rightLines.value = diffResult.old_content.map((content, idx) => ({
+    const newRightLines: DiffLine[] = diffResult.old_content.map((content, idx) => ({
       lineNum: idx + 1,
       content,
       changeType: 'unchanged',
@@ -1435,13 +1032,13 @@ const doFileCompare = async () => {
     diffResult.hunks.forEach(hunk => {
       hunk.lines.forEach(line => {
         if (line.change_type === 'added') {
-          const leftLine = leftLines.value.find(l => l.lineNum === line.line_number);
+          const leftLine = newLeftLines.find(l => l.lineNum === line.line_number);
           if (leftLine) {
             leftLine.changeType = 'added';
             leftLine.isDiff = true;
           }
         } else if (line.change_type === 'removed') {
-          const rightLine = rightLines.value.find(l => l.lineNum === line.line_number);
+          const rightLine = newRightLines.find(l => l.lineNum === line.line_number);
           if (rightLine) {
             rightLine.changeType = 'removed';
             rightLine.isDiff = true;
@@ -1449,6 +1046,9 @@ const doFileCompare = async () => {
         }
       });
     });
+
+    leftLines.value = newLeftLines;
+    rightLines.value = newRightLines;
 
     currentFile.value = {
       name: compareNewPath.value.split('/').pop() || '',
@@ -1473,14 +1073,14 @@ const doTextCompare = async () => {
       newContent: compareText2.value
     });
 
-    leftLines.value = diffResult.new_content.map((content, idx) => ({
+    const newLeftLines: DiffLine[] = diffResult.new_content.map((content, idx) => ({
       lineNum: idx + 1,
       content,
       changeType: 'unchanged',
       isDiff: false
     }));
 
-    rightLines.value = diffResult.old_content.map((content, idx) => ({
+    const newRightLines: DiffLine[] = diffResult.old_content.map((content, idx) => ({
       lineNum: idx + 1,
       content,
       changeType: 'unchanged',
@@ -1490,13 +1090,13 @@ const doTextCompare = async () => {
     diffResult.hunks.forEach(hunk => {
       hunk.lines.forEach(line => {
         if (line.change_type === 'added') {
-          const leftLine = leftLines.value.find(l => l.lineNum === line.line_number);
+          const leftLine = newLeftLines.find(l => l.lineNum === line.line_number);
           if (leftLine) {
             leftLine.changeType = 'added';
             leftLine.isDiff = true;
           }
         } else if (line.change_type === 'removed') {
-          const rightLine = rightLines.value.find(l => l.lineNum === line.line_number);
+          const rightLine = newRightLines.find(l => l.lineNum === line.line_number);
           if (rightLine) {
             rightLine.changeType = 'removed';
             rightLine.isDiff = true;
@@ -1504,6 +1104,9 @@ const doTextCompare = async () => {
         }
       });
     });
+
+    leftLines.value = newLeftLines;
+    rightLines.value = newRightLines;
 
     currentFile.value = {
       name: '文本比对结果',
@@ -1521,3 +1124,19 @@ const doTextCompare = async () => {
   }
 };
 </script>
+
+<style scoped>
+.app {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+}
+
+.main-container {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+</style>
