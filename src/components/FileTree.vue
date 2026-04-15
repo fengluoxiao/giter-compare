@@ -12,7 +12,14 @@
         :style="{ paddingLeft: `${(level || 0) * 20}px` }"
         @click="$emit('toggle', node)"
       >
-        <span class="tree-arrow">{{ node.expanded ? '▼' : '▶' }}</span>
+        <span class="tree-arrow">
+          <svg v-if="node.expanded" viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+            <path d="M7 10l5 5 5-5z"/>
+          </svg>
+          <svg v-else viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+            <path d="M10 17l5-5-5-5v10z"/>
+          </svg>
+        </span>
         <span class="tree-icon">{{ node.expanded ? '📂' : '📁' }}</span>
         <span class="tree-name">{{ node.name }}</span>
         <span 
