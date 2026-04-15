@@ -853,9 +853,29 @@ const refresh = async () => {
   if (currentPath.value) {
     await loadFileTree(currentPath.value);
 
+    // 更新所有标签页的文件状态
     for (const tab of tabs.value) {
       if (tab.projectPath === currentPath.value) {
         await updateTabFileStatus(tab.path);
+      }
+    }
+
+    // 如果有当前激活的标签页，重新加载其内容到视图
+    if (activeTabId.value) {
+      const activeTab = tabs.value.find(t => t.id === activeTabId.value);
+      if (activeTab && activeTab.projectPath === currentPath.value) {
+        // 直接从标签页数据更新视图，不需要重新加载文件
+        leftLines.value = activeTab.leftLines;
+        rightLines.value = activeTab.rightLines;
+        isBinary.value = activeTab.isBinary;
+        diffStats.value = activeTab.diffStats;
+        currentFile.value = {
+          name: activeTab.name,
+          path: activeTab.path,
+          type: 'file',
+          status: activeTab.status || '',
+          children: []
+        };
       }
     }
   }
