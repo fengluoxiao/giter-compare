@@ -384,17 +384,29 @@ fn parse_diff(diff_text: &str, _base_path: &str) -> Result<FileDiff, String> {
                     // 检查是否有待处理的删除行
                     if let Some((removed_line, removed_num)) = pending_removed.take() {
                         // 将删除和添加合并为修改
+                        // 先添加删除行（旧内容）
                         let removed_content = removed_line.content.clone();
-                        let changed_line = DiffLine {
+                        let removed_diff_line = DiffLine {
                             line_number: removed_num,
                             content: removed_content.clone(),
-                            change_type: "changed".to_string(),
+                            change_type: "removed".to_string(),
                         };
                         if let Some(ref mut hunk) = current_hunk {
-                            hunk.lines.push(changed_line);
+                            hunk.lines.push(removed_diff_line);
                         }
                         old_content.push(removed_content);
-                        new_content.push(content);
+                        
+                        // 再添加新增行（新内容）
+                        let added_content = content.clone();
+                        let added_diff_line = DiffLine {
+                            line_number: new_line_num,
+                            content: added_content.clone(),
+                            change_type: "added".to_string(),
+                        };
+                        if let Some(ref mut hunk) = current_hunk {
+                            hunk.lines.push(added_diff_line);
+                        }
+                        new_content.push(added_content);
                         new_line_num += 1;
                     } else {
                         // 没有待处理的删除行，这是纯新增
