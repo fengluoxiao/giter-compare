@@ -251,18 +251,14 @@
         <h3>添加项目</h3>
         <div class="add-project-form">
           <div class="form-row">
-            <div class="form-group">
-              <label>项目路径</label>
-              <button class="btn btn-secondary" @click="selectProjectPath">选择文件夹</button>
-            </div>
-            <div class="form-group">
+            <div class="form-group form-group-name">
               <label>项目备注（可选）</label>
-              <input v-model="newProjectName" placeholder="留空则使用文件夹名称" @keyup.enter="addToPendingList" />
+              <input v-model="newProjectName" placeholder="留空则使用文件夹名称" />
             </div>
-            <button class="btn btn-primary btn-add-to-list" @click="addToPendingList" :disabled="!newProjectPath">添加到列表</button>
+            <button class="btn btn-primary" @click="selectProjectPath">选择文件夹</button>
           </div>
         </div>
-        
+
         <!-- 待添加项目列表 -->
         <div v-if="pendingProjects.length > 0" class="pending-projects">
           <h4>待添加项目 ({{ pendingProjects.length }})</h4>
@@ -274,7 +270,7 @@
             </div>
           </div>
         </div>
-        
+
         <div class="dialog-actions">
           <button class="btn btn-secondary" @click="closeAddProjectDialog">取消</button>
           <button class="btn btn-primary" @click="confirmAddProjects" :disabled="pendingProjects.length === 0">确定添加 ({{ pendingProjects.length }})</button>
@@ -484,12 +480,28 @@ const selectProjectPath = async () => {
     });
 
     if (selected && typeof selected === 'string') {
-      newProjectPath.value = selected;
-      // 如果没有输入名称，使用文件夹名
-      if (!newProjectName.value) {
-        const parts = selected.split('/');
-        newProjectName.value = parts[parts.length - 1] || parts[parts.length - 2] || '新项目';
+      // 检查是否已存在
+      const exists = pendingProjects.value.some(p => p.path === selected);
+      if (exists) {
+        alert('该项目已添加到列表中');
+        return;
       }
+
+      // 获取项目名称
+      let projectName = newProjectName.value.trim();
+      if (!projectName) {
+        const parts = selected.split('/');
+        projectName = parts[parts.length - 1] || parts[parts.length - 2] || '新项目';
+      }
+
+      // 直接添加到列表
+      pendingProjects.value.push({
+        name: projectName,
+        path: selected
+      });
+
+      // 清空备注输入，准备添加下一个
+      newProjectName.value = '';
     }
   } catch (e) {
     console.error('Failed to select path:', e);
@@ -989,8 +1001,8 @@ const selectFile = async (path: string) => {
             isDiff: false
           });
           alignedRightLines.push({
-            lineNum: pendingRemoved.lineNum,
-            content: pendingRemoved.content,
+            lineNum: pendingRemoved?.lineNum || 0,
+            content: pendingRemoved?.content || '', 
             changeType: 'removed',
             isDiff: true
           });

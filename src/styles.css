@@ -899,11 +899,7 @@ body {
   gap: 8px;
 }
 
-.form-group:first-child {
-  flex: 0 0 200px;
-}
-
-.form-group:nth-child(2) {
+.form-group-name {
   flex: 1;
 }
 
@@ -912,9 +908,19 @@ body {
   color: var(--text-secondary);
 }
 
-.btn-add-to-list {
-  flex: 0 0 auto;
-  white-space: nowrap;
+.form-group input {
+  width: 100%;
+  height: 36px;
+  padding: 0 8px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-primary);
+  font-size: 13px;
+}
+
+.form-group input::placeholder {
+  color: var(--text-secondary);
 }
 
 /* 待添加项目列表 */
