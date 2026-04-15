@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
-use git2::{Repository, StatusOptions, StatusShow, ObjectType};
+use git2::{Repository, StatusOptions, StatusShow};
 use notify::{RecommendedWatcher, RecursiveMode};
 use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
 use std::path::Path;
@@ -344,7 +344,7 @@ fn parse_diff(diff_text: &str, _base_path: &str) -> Result<FileDiff, String> {
             match change_type {
                 "removed" => {
                     // 如果有待处理的删除行，先保存它
-                    if let Some((removed_line, removed_num)) = pending_removed.take() {
+                    if let Some((removed_line, _removed_num)) = pending_removed.take() {
                         if let Some(ref mut hunk) = current_hunk {
                             hunk.lines.push(removed_line);
                         }
@@ -456,7 +456,7 @@ fn diff_without_git(old_content: &str, new_content: &str) -> FileDiff {
                     change_type: "unchanged".to_string(),
                 });
             }
-            (Some(old), Some(new)) => {
+            (Some(old), Some(_new)) => {
                 // 同一行有修改，标记为 changed
                 diff_lines.push(DiffLine {
                     line_number: i + 1,
