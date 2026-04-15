@@ -84,7 +84,8 @@ defineEmits<{
 
 // 从路径获取文件夹名称
 const getFolderName = (path: string): string => {
-  const parts = path.split('/');
+  // 处理 Windows 和 Unix 路径
+  const parts = path.split(/[\\/]/);
   return parts[parts.length - 1] || parts[parts.length - 2] || '新项目';
 };
 </script>

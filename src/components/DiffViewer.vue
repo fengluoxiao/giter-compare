@@ -115,7 +115,10 @@ const syncScroll = (source: 'left' | 'right') => {
   const targetEl = source === 'left' ? rightCodeContent.value : leftCodeContent.value;
 
   if (sourceEl && targetEl) {
+    // 同步纵向滚动
     targetEl.scrollTop = sourceEl.scrollTop;
+    // 同步横向滚动
+    targetEl.scrollLeft = sourceEl.scrollLeft;
   }
 
   // 更新 minimap 的 scrollTop

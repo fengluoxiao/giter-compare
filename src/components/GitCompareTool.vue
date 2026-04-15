@@ -564,7 +564,7 @@ const selectProjectPath = async () => {
 
       let projectName = newProjectName.value.trim();
       if (!projectName) {
-        const parts = selected.split('/');
+        const parts = selected.split(/[\\/]/);
         projectName = parts[parts.length - 1] || parts[parts.length - 2] || '新项目';
       }
 
@@ -835,7 +835,7 @@ const loadStagedFiles = async () => {
     });
 
     stagedFiles.value = stagedChanges.map(change => {
-      const parts = change.path.split('/');
+      const parts = change.path.split(/[\\/]/);
       return {
         name: parts[parts.length - 1] || change.path,
         path: change.path,
