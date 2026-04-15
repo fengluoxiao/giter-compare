@@ -1,5 +1,5 @@
 <template>
-  <div class="app" :data-theme="theme">
+  <div class="app">
     <!-- 工具栏 -->
     <Toolbar
       :theme="theme"
@@ -249,6 +249,8 @@ const hasNext = computed(() => currentFileIndex.value < allFiles.value.length - 
 onMounted(async () => {
   const savedTheme = localStorage.getItem('theme');
   theme.value = savedTheme || 'light';
+  // 初始化时设置 body 的 data-theme 属性
+  document.body.setAttribute('data-theme', theme.value);
 
   const savedShowAll = localStorage.getItem('showAllFiles');
   if (savedShowAll !== null) {
@@ -274,6 +276,8 @@ onUnmounted(() => {
 const toggleTheme = () => {
   theme.value = theme.value === 'dark' ? 'light' : 'dark';
   localStorage.setItem('theme', theme.value);
+  // 设置 body 的 data-theme 属性，让对话框也能继承主题
+  document.body.setAttribute('data-theme', theme.value);
 };
 
 // 显示所有文件切换
