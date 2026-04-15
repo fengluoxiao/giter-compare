@@ -2,11 +2,11 @@
   <div class="diff-viewer">
     <div v-if="currentFile" class="file-info-bar">
       <div class="file-info">
-        <span class="file-label">新版本</span>
+        <span class="file-label">旧版本</span>
         <span class="file-path">{{ currentFile.path }}</span>
       </div>
       <div class="file-info">
-        <span class="file-label">旧版本</span>
+        <span class="file-label">新版本</span>
         <span class="file-path">{{ currentFile.path }}</span>
       </div>
     </div>
@@ -18,24 +18,24 @@
       <template v-else>
         <div class="diff-pane">
           <div class="pane-header">
-            <span class="pane-title">{{ viewMode === 'working' ? '工作区' : '暂存区' }}</span>
+            <span class="pane-title">HEAD</span>
           </div>
           <div class="code-content" ref="leftCodeContent" @scroll="syncScroll('left')">
-            <DiffLines :lines="rightLines" />
+            <DiffLines :lines="leftLines" />
           </div>
         </div>
         <div class="diff-divider"></div>
         <div class="diff-pane">
           <div class="pane-header">
-            <span class="pane-title">HEAD</span>
+            <span class="pane-title">{{ viewMode === 'working' ? '工作区' : '暂存区' }}</span>
           </div>
           <div class="code-content" ref="rightCodeContent" @scroll="syncScroll('right')">
-            <DiffLines :lines="leftLines" />
+            <DiffLines :lines="rightLines" />
           </div>
         </div>
         <!-- Minimap -->
         <Minimap
-          :lines="rightLines"
+          :lines="leftLines"
           :scroll-top="leftScrollTop"
           :container-height="codeContainerHeight"
           :content-height="codeContentHeight"
