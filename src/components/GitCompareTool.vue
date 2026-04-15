@@ -264,7 +264,23 @@
           <h4>待添加项目 ({{ pendingProjects.length }})</h4>
           <div class="pending-list">
             <div v-for="(item, index) in pendingProjects" :key="index" class="pending-item">
-              <span class="pending-name">{{ item.name }}</span>
+              <div class="pending-name-wrapper">
+                <input
+                  v-if="editingPendingIndex === index"
+                  v-model="editingPendingName"
+                  class="pending-name-input"
+                  @blur="savePendingName(index)"
+                  @keyup.enter="savePendingName(index)"
+                  @keyup.esc="cancelEditPendingName"
+                  ref="pendingNameInput"
+                />
+                <span
+                  v-else
+                  class="pending-name editable"
+                  @click="startEditPendingName(index, item.name)"
+                  title="点击修改备注"
+                >{{ item.name }}</span>
+              </div>
               <span class="pending-path">{{ item.path }}</span>
               <button class="btn btn-icon btn-remove" @click="removeFromPending(index)" title="删除">✕</button>
             </div>
@@ -354,6 +370,9 @@ const showAddProject = ref(false);
 const newProjectName = ref('');
 const newProjectPath = ref('');
 const pendingProjects = ref<{ name: string; path: string }[]>([]);
+const editingPendingIndex = ref<number>(-1);
+const editingPendingName = ref('');
+const pendingNameInput = ref<HTMLInputElement | null>(null);
 
 // 侧边栏宽度和折叠状态
 const projectSidebarWidth = ref(200);
@@ -538,6 +557,35 @@ const addToPendingList = () => {
 
 const removeFromPending = (index: number) => {
   pendingProjects.value.splice(index, 1);
+  // 如果正在编辑的项目被删除，取消编辑状态
+  if (editingPendingIndex.value === index) {
+    editingPendingIndex.value = -1;
+    editingPendingName.value = '';
+  }
+};
+
+// 编辑待添加项目名称
+const startEditPendingName = (index: number, name: string) => {
+  editingPendingIndex.value = index;
+  editingPendingName.value = name;
+  // 下一个 tick 聚焦输入框
+  setTimeout(() => {
+    pendingNameInput.value?.focus();
+    pendingNameInput.value?.select();
+  }, 0);
+};
+
+const savePendingName = (index: number) => {
+  if (editingPendingName.value.trim()) {
+    pendingProjects.value[index].name = editingPendingName.value.trim();
+  }
+  editingPendingIndex.value = -1;
+  editingPendingName.value = '';
+};
+
+const cancelEditPendingName = () => {
+  editingPendingIndex.value = -1;
+  editingPendingName.value = '';
 };
 
 const closeAddProjectDialog = () => {
@@ -1001,8 +1049,8 @@ const selectFile = async (path: string) => {
             isDiff: false
           });
           alignedRightLines.push({
-            lineNum: pendingRemoved?.lineNum || 0,
-            content: pendingRemoved?.content || '', 
+            lineNum: pendingRemoved.lineNum,
+            content: pendingRemoved.content,
             changeType: 'removed',
             isDiff: true
           });

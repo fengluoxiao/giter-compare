@@ -959,13 +959,42 @@ body {
   margin-bottom: 0;
 }
 
+.pending-name-wrapper {
+  flex: 0 0 120px;
+}
+
 .pending-name {
   font-weight: 500;
   color: var(--text-primary);
-  flex: 0 0 120px;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  display: block;
+}
+
+.pending-name.editable {
+  cursor: pointer;
+  padding: 4px 8px;
+  border-radius: 3px;
+  border: 1px solid transparent;
+  transition: all 0.2s;
+}
+
+.pending-name.editable:hover {
+  background-color: var(--bg-hover);
+  border-color: var(--border-color);
+}
+
+.pending-name-input {
+  width: 100%;
+  height: 28px;
+  padding: 0 8px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--accent-color);
+  border-radius: 3px;
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 500;
 }
 
 .pending-path {
