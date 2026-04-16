@@ -4,6 +4,21 @@
       <!-- 保存当前工作区 -->
       <div class="section save-section">
         <h4>保存当前工作区</h4>
+        
+        <!-- 显示当前项目列表 -->
+        <div v-if="currentProjects.length > 0" class="current-projects">
+          <div class="projects-header">当前项目列表 ({{ currentProjects.length }}个):</div>
+          <div class="projects-list">
+            <div v-for="project in currentProjects" :key="project.id" class="project-item">
+              <span class="project-name">{{ project.name }}</span>
+              <span class="project-path">{{ project.path }}</span>
+            </div>
+          </div>
+        </div>
+        <div v-else class="no-projects">
+          当前没有项目
+        </div>
+        
         <div class="input-group">
           <input
             v-model="workspaceName"
@@ -274,6 +289,63 @@ onMounted(() => {
 
 .btn-save-current {
   width: 100%;
+}
+
+.current-projects {
+  margin-bottom: 16px;
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  padding: 12px;
+  background-color: var(--bg-secondary);
+}
+
+.projects-header {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-primary);
+  margin-bottom: 8px;
+  padding-bottom: 8px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.projects-list {
+  max-height: 150px;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.project-item {
+  display: flex;
+  flex-direction: column;
+  padding: 6px 8px;
+  background-color: var(--bg-primary);
+  border-radius: 4px;
+  border: 1px solid var(--border-color);
+}
+
+.project-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+}
+
+.project-path {
+  font-size: 11px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+  word-break: break-all;
+}
+
+.no-projects {
+  text-align: center;
+  padding: 20px;
+  color: var(--text-secondary);
+  font-size: 13px;
+  margin-bottom: 16px;
+  border: 1px dashed var(--border-color);
+  border-radius: 6px;
 }
 
 .workspace-list {
