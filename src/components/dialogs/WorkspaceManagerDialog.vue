@@ -290,6 +290,7 @@ onMounted(() => {
   border-radius: 6px;
   cursor: pointer;
   transition: all 0.2s;
+  min-height: 60px;
 }
 
 .workspace-item:hover {
@@ -382,6 +383,8 @@ onMounted(() => {
   padding: 6px;
   width: 32px;
   height: 32px;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
 }
 
 .btn-delete {
