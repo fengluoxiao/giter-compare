@@ -158,6 +158,16 @@
         </div>
       </div>
     </div>
+
+    <!-- 通用输入对话框 -->
+    <PromptDialog
+      :open="showPromptDialog"
+      :title="promptTitle"
+      :message="promptMessage"
+      v-model:default-value="promptValue"
+      @confirm="handleCreateWorkspace"
+      @cancel="showPromptDialog = false"
+    />
   </div>
 </template>
 
@@ -171,7 +181,7 @@ import ProjectSidebar from './ProjectSidebar.vue';
 import FileTreeSidebar from './FileTreeSidebar.vue';
 import DiffViewer from './DiffViewer.vue';
 import TabBar, { type Tab } from './TabBar.vue';
-import { FileCompareDialog, TextCompareDialog, AddProjectDialog, PluginManagerDialog, WorkspaceManagerDialog } from './dialogs';
+import { FileCompareDialog, TextCompareDialog, AddProjectDialog, PluginManagerDialog, WorkspaceManagerDialog, PromptDialog } from './dialogs';
 
 interface FileNode {
   name: string;
@@ -244,6 +254,10 @@ const showAddProject = ref(false);
 const showPluginManager = ref(false);
 const showWorkspaceManager = ref(false);
 const showPermissionDialog = ref(false);
+const showPromptDialog = ref(false);
+const promptTitle = ref('');
+const promptMessage = ref('');
+const promptValue = ref('');
 
 // 调试：监听 showPluginManager 变化
 watch(showPluginManager, (newVal, oldVal) => {
@@ -1068,9 +1082,15 @@ const importProjects = async () => {
 
 // 添加工作区
 const addWorkspace = () => {
-  const name = prompt('请输入工作区名称：');
-  if (!name) return;
+  console.log('Add workspace button clicked');
+  promptTitle.value = '新建工作区';
+  promptMessage.value = '请输入工作区名称：';
+  promptValue.value = '';
+  showPromptDialog.value = true;
+};
 
+// 处理工作区创建确认
+const handleCreateWorkspace = (name: string) => {
   const newWorkspace: Workspace = {
     id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
     name,
@@ -1081,6 +1101,8 @@ const addWorkspace = () => {
   currentWorkspaceId.value = newWorkspace.id;
   projects.value = [];
   saveWorkspaces();
+  
+  console.log('Workspace created:', newWorkspace.name);
 };
 
 // 切换工作区

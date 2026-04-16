@@ -4,3 +4,4 @@ export { default as TextCompareDialog } from './TextCompareDialog.vue';
 export { default as AddProjectDialog } from './AddProjectDialog.vue';
 export { default as PluginManagerDialog } from './PluginManagerDialog.vue';
 export { default as WorkspaceManagerDialog } from './WorkspaceManagerDialog.vue';
+export { default as PromptDialog } from './PromptDialog.vue';
