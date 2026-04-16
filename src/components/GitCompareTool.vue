@@ -360,7 +360,7 @@ onMounted(async () => {
     showDeletedFiles.value = savedShowDeleted === 'true';
   }
 
-  loadProjects();
+  loadWorkspaces();
 
   unlistenFileChange = await listen('file-changed', (event: any) => {
     if (currentPath.value) {
@@ -932,6 +932,19 @@ const loadWorkspaces = () => {
   } else {
     // 兼容旧数据格式
     loadProjects();
+    
+    // 如果没有工作区也没有旧数据，创建默认工作区
+    if (workspaces.value.length === 0) {
+      const defaultWorkspace: Workspace = {
+        id: 'default',
+        name: '默认工作区',
+        projects: []
+      };
+      workspaces.value = [defaultWorkspace];
+      currentWorkspaceId.value = 'default';
+      projects.value = [];
+      saveWorkspaces();
+    }
   }
 };
 
@@ -1101,6 +1114,9 @@ const handleCreateWorkspace = (name: string) => {
   currentWorkspaceId.value = newWorkspace.id;
   projects.value = [];
   saveWorkspaces();
+  
+  // 关闭对话框
+  showPromptDialog.value = false;
   
   console.log('Workspace created:', newWorkspace.name);
 };
@@ -1446,14 +1462,30 @@ const loadStagedFiles = async () => {
       return status === 'modified' || status === 'deleted' || status === 'renamed' || status === 'added';
     });
 
-    stagedFiles.value = changedFiles.map(change => {
-      const parts = change.path.split(/[\\/]/);
-      return {
-        name: parts[parts.length - 1] || change.path,
-        path: change.path,
-        status: change.status
-      };
-    });
+    // 进一步过滤掉文件夹路径（Git 有时会将文件夹报告为变更）
+    const fileOnlyChanges = await Promise.all(changedFiles.map(async change => {
+      const fullPath = `${currentPath.value}/${change.path}`;
+      try {
+        // 尝试读取路径，如果是文件夹，会返回目录内容
+        const entries = await invoke<any[]>('read_directory', { path: fullPath });
+        // 如果能读取成功，说明是文件夹，排除它
+        return null;
+      } catch (e) {
+        // 读取失败，说明是文件（或不存在），保留它
+        return change;
+      }
+    }));
+
+    stagedFiles.value = fileOnlyChanges
+      .filter(change => change !== null)
+      .map(change => {
+        const parts = (change as GitStatus).path.split(/[\\/]/);
+        return {
+          name: parts[parts.length - 1] || (change as GitStatus).path,
+          path: (change as GitStatus).path,
+          status: (change as GitStatus).status
+        };
+      });
   } catch (e) {
     console.error('Failed to load changed files:', e);
     stagedFiles.value = [];
@@ -1545,6 +1577,8 @@ const updateFileTreeStatus = (nodes: FileNode[], changes: GitStatus[]) => {
         node.status = undefined;
       }
     }
+    // 文件夹不设置 status，因为 Git 不会跟踪文件夹本身
+    // 文件夹的状态通过 has-changes 类由其子文件体现
     if (node.children && node.children.length > 0) {
       updateFileTreeStatus(node.children, changes);
     }
