@@ -322,6 +322,8 @@ onMounted(() => {
 .workspace-actions {
   display: flex;
   gap: 4px;
+  align-items: center;
+  flex-shrink: 0;
 }
 
 .empty-state {
@@ -382,9 +384,12 @@ onMounted(() => {
 
 .btn-delete {
   color: var(--error-color, #ef4444);
+  border-color: var(--border-color);
+  background-color: var(--bg-primary);
 }
 
 .btn-delete:hover {
   background-color: var(--error-color-light, rgba(239, 68, 68, 0.1));
+  border-color: var(--error-color, #ef4444);
 }
 </style>
