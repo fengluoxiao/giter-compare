@@ -240,6 +240,17 @@ const getFolderName = (path: string): string => {
   color: white;
 }
 
+.project-item.active .btn-delete {
+  opacity: 1;
+  visibility: visible;
+  color: rgba(255, 255, 255, 0.8);
+}
+
+.project-item.active .btn-delete:hover {
+  color: white;
+  background-color: rgba(255, 255, 255, 0.2);
+}
+
 .project-icon {
   font-size: 16px;
 }
