@@ -135,12 +135,16 @@ const saveWorkspace = () => {
   workspaceName.value = '';
 };
 
-// 一键保存当前项目
+// 导入当前项目列表
 const saveCurrentWorkspace = () => {
   const now = new Date();
   const dateStr = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
-  workspaceName.value = `工作区 ${dateStr}`;
-  saveWorkspace();
+  const name = prompt(`当前有 ${props.currentProjects.length} 个项目\n\n请输入工作区名称:`, `工作区 ${dateStr}`);
+  
+  if (name && name.trim()) {
+    workspaceName.value = name.trim();
+    saveWorkspace();
+  }
 };
 
 // 加载工作区
