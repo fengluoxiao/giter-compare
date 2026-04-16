@@ -990,15 +990,14 @@ fn open_system_settings() -> Result<(), String> {
             .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
             .spawn()
             .map_err(|e| format!("Failed to open system settings: {}", e))?;
+        Ok(())
     }
     
     #[cfg(not(target_os = "macos"))]
     {
-        // Windows/Linux 可以添加相应的实现
-        return Err("This feature is only available on macOS".to_string());
+        // Windows/Linux 暂不支持此功能
+        Err("This feature is only available on macOS".to_string())
     }
-    
-    Ok(())
 }
 
 pub fn run() {
