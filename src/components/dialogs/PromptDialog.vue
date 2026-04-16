@@ -3,14 +3,8 @@
     <div class="dialog">
       <div class="dialog-header">
         <h3>{{ title }}</h3>
-        <button class="close-btn" @click="handleCancel">
-          <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
-            <path d="M18 6L6 18M6 6l12 12"/>
-          </svg>
-        </button>
       </div>
       <div class="dialog-content">
-        <p v-if="message" class="message">{{ message }}</p>
         <input
           ref="inputRef"
           v-model="inputValue"
@@ -22,8 +16,8 @@
         />
       </div>
       <div class="dialog-actions">
-        <button class="btn btn-secondary" @click="handleCancel">取消</button>
         <button class="btn btn-primary" @click="handleConfirm">确定</button>
+        <button class="btn btn-secondary" @click="handleCancel">取消</button>
       </div>
     </div>
   </div>
@@ -35,7 +29,6 @@ import { ref, watch, nextTick } from 'vue';
 const props = defineProps<{
   open: boolean;
   title: string;
-  message?: string;
   placeholder?: string;
   defaultValue?: string;
 }>();
@@ -75,175 +68,97 @@ const handleCancel = () => {
   left: 0;
   right: 0;
   bottom: 0;
-  background-color: rgba(0, 0, 0, 0.6);
+  background-color: rgba(0, 0, 0, 0.4);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
-  backdrop-filter: blur(8px);
-  animation: fadeIn 0.2s ease-out;
-}
-
-@keyframes fadeIn {
-  from {
-    opacity: 0;
-  }
-  to {
-    opacity: 1;
-  }
 }
 
 .dialog {
-  background-color: var(--bg-primary);
-  border-radius: 12px;
-  box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5);
+  background-color: #f3f3f3;
+  border-radius: 6px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
   width: 90%;
-  max-width: 420px;
+  max-width: 360px;
   overflow: hidden;
   display: flex;
   flex-direction: column;
-  border: 1px solid var(--border-color);
-  animation: slideUp 0.3s ease-out;
-}
-
-@keyframes slideUp {
-  from {
-    opacity: 0;
-    transform: translateY(20px) scale(0.95);
-  }
-  to {
-    opacity: 1;
-    transform: translateY(0) scale(1);
-  }
+  border: 1px solid #e0e0e0;
 }
 
 .dialog-header {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
-  padding: 20px 24px;
-  border-bottom: 1px solid var(--border-color);
+  padding: 16px 20px 8px;
 }
 
 .dialog-header h3 {
   margin: 0;
-  font-size: 18px;
+  font-size: 15px;
   font-weight: 600;
-  color: var(--text-primary);
-  letter-spacing: -0.02em;
-}
-
-.close-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  width: 32px;
-  height: 32px;
-  border: none;
-  background: transparent;
-  color: var(--text-secondary);
-  cursor: pointer;
-  border-radius: 6px;
-  transition: all 0.2s;
-  padding: 0;
-}
-
-.close-btn:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
+  color: #333;
 }
 
 .dialog-content {
-  padding: 24px;
-  background: linear-gradient(to bottom, var(--bg-primary), var(--bg-secondary));
-}
-
-.message {
-  margin: 0 0 16px 0;
-  color: var(--text-primary);
-  font-size: 14px;
-  line-height: 1.6;
-  font-weight: 500;
+  padding: 8px 20px 16px;
 }
 
 .dialog-input {
   width: 100%;
-  padding: 12px 16px;
-  border: 1.5px solid var(--border-color);
-  border-radius: 8px;
-  background-color: var(--bg-primary);
-  color: var(--text-primary);
-  font-size: 14px;
+  padding: 8px 12px;
+  border: 1px solid #ccc;
+  border-radius: 3px;
+  background-color: #fff;
+  color: #333;
+  font-size: 13px;
   box-sizing: border-box;
-  transition: all 0.2s;
-  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.05);
-}
-
-.dialog-input:hover {
-  border-color: var(--text-secondary);
+  transition: border-color 0.2s;
+  outline: none;
 }
 
 .dialog-input:focus {
-  outline: none;
-  border-color: var(--accent-color);
-  box-shadow: 0 0 0 4px rgba(59, 130, 246, 0.15), 0 2px 6px rgba(0, 0, 0, 0.08);
-  transform: translateY(-1px);
+  border-color: #007acc;
 }
 
 .dialog-input::placeholder {
-  color: var(--text-secondary);
-  opacity: 0.7;
+  color: #999;
 }
 
 .dialog-actions {
   display: flex;
-  gap: 12px;
-  padding: 16px 24px;
-  border-top: 1px solid var(--border-color);
+  gap: 8px;
+  padding: 12px 20px 16px;
   justify-content: flex-end;
-  background-color: var(--bg-primary);
 }
 
 .dialog-actions .btn {
-  min-width: 80px;
-  padding: 10px 20px;
-  border-radius: 8px;
+  padding: 6px 16px;
+  border-radius: 3px;
   border: 1px solid transparent;
   cursor: pointer;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 500;
-  transition: all 0.2s;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  transition: all 0.15s;
 }
 
 .dialog-actions .btn-primary {
-  background: linear-gradient(135deg, var(--accent-color), var(--accent-color));
+  background-color: #0e639c;
   color: white;
-  border-color: var(--accent-color);
-  box-shadow: 0 2px 8px rgba(59, 130, 246, 0.3);
+  border-color: #0e639c;
 }
 
 .dialog-actions .btn-primary:hover {
-  transform: translateY(-1px);
-  box-shadow: 0 4px 12px rgba(59, 130, 246, 0.4);
-  filter: brightness(1.05);
-}
-
-.dialog-actions .btn-primary:active {
-  transform: translateY(0);
+  background-color: #1177bb;
+  border-color: #1177bb;
 }
 
 .dialog-actions .btn-secondary {
-  background-color: transparent;
-  color: var(--text-secondary);
-  border-color: var(--border-color);
+  background-color: #fff;
+  color: #333;
+  border-color: #ccc;
 }
 
 .dialog-actions .btn-secondary:hover {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
-  border-color: var(--text-secondary);
+  background-color: #e6e6e6;
+  border-color: #b3b3b3;
 }
 </style>
