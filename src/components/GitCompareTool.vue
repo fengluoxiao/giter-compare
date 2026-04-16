@@ -237,7 +237,7 @@ const editingPendingIndex = ref<number>(-1);
 const editingPendingName = ref('');
 
 // 侧边栏宽度和折叠状态
-const projectSidebarWidth = ref(200);
+const projectSidebarWidth = ref(280);
 const fileSidebarWidth = ref(280);
 const isProjectSidebarCollapsed = ref(false);
 const isFileSidebarCollapsed = ref(false);
