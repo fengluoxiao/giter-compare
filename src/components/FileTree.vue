@@ -6,8 +6,7 @@
         class="tree-item directory"
         :class="{ 
           expanded: node.expanded, 
-          'has-changes': hasChangesInDirectory(node),
-          [getDirectorySummaryStatus(node)?.toLowerCase() || '']: getDirectorySummaryStatus(node)
+          'has-changes': hasChangesInDirectory(node)
         }"
         :style="{ paddingLeft: `${(level || 0) * 20}px` }"
         @click="$emit('toggle', node)"
@@ -22,14 +21,7 @@
         </span>
         <span class="tree-icon">{{ node.expanded ? '📂' : '📁' }}</span>
         <span class="tree-name">{{ node.name }}</span>
-        <span 
-          v-if="hasChangesInDirectory(node)" 
-          class="tree-status-right" 
-          :class="getDirectorySummaryStatus(node)?.toLowerCase()"
-        >
-          {{ getStatusIcon(getDirectorySummaryStatus(node)!) }}
-        </span>
-        <span v-else class="tree-status-placeholder-right"></span>
+        <span class="tree-status-placeholder-right"></span>
       </div>
       <div
         v-else
@@ -88,45 +80,5 @@ const hasChangesInDirectory = (node: FileNode): boolean => {
     return node.children.some(child => hasChangesInDirectory(child));
   }
   return false;
-};
-
-// 获取文件夹下所有更改的状态列表
-const getDirectoryChangeStatuses = (node: FileNode): string[] => {
-  const statuses: string[] = [];
-  
-  const collectStatuses = (n: FileNode) => {
-    if (n.type === 'file' && n.status) {
-      statuses.push(n.status);
-    }
-    if (n.children) {
-      n.children.forEach(child => collectStatuses(child));
-    }
-  };
-  
-  collectStatuses(node);
-  return statuses;
-};
-
-// 获取文件夹的汇总状态（优先级：Modified > Added > Deleted > Renamed > Untracked）
-const getDirectorySummaryStatus = (node: FileNode): string | null => {
-  const statuses = getDirectoryChangeStatuses(node);
-  if (statuses.length === 0) return null;
-  
-  const priority = ['Modified', 'Added', 'Deleted', 'Renamed', 'Untracked'];
-  for (const p of priority) {
-    if (statuses.includes(p)) return p;
-  }
-  return statuses[0];
-};
-
-const getStatusIcon = (status: string): string => {
-  switch (status) {
-    case 'Modified': return 'M';
-    case 'Added': return 'A';
-    case 'Deleted': return 'D';
-    case 'Renamed': return 'R';
-    case 'Untracked': return '?';
-    default: return ' ';
-  }
 };
 </script>
