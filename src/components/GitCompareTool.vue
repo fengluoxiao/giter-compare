@@ -333,6 +333,22 @@ const onShowDeletedFilesChange = (value: boolean) => {
   localStorage.setItem('showDeletedFiles', showDeletedFiles.value.toString());
   if (currentPath.value) {
     loadFileTree(currentPath.value);
+    // 如果勾选显示已删除文件，展开所有目录
+    if (value) {
+      expandAllDirectories(fileTree.value);
+    }
+  }
+};
+
+// 展开所有目录
+const expandAllDirectories = (nodes: FileNode[]) => {
+  for (const node of nodes) {
+    if (node.type === 'directory') {
+      node.expanded = true;
+      if (node.children && node.children.length > 0) {
+        expandAllDirectories(node.children);
+      }
+    }
   }
 };
 
