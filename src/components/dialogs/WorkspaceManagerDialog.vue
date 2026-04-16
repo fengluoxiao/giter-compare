@@ -186,16 +186,21 @@ const importFromFolder = async () => {
         };
       });
 
-      // 创建新工作区
-      const workspace: Workspace = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        name: `导入的工作区 ${new Date().toLocaleDateString()}`,
-        projects: newProjects,
-        createdAt: new Date().toISOString()
-      };
+      // 弹出输入框让用户输入工作区名称
+      const name = prompt(`已选择 ${newProjects.length} 个项目\n\n请输入工作区名称:`, `工作区 ${new Date().toLocaleDateString()}`);
+      
+      if (name && name.trim()) {
+        // 创建新工作区
+        const workspace: Workspace = {
+          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+          name: name.trim(),
+          projects: newProjects,
+          createdAt: new Date().toISOString()
+        };
 
-      workspaces.value.unshift(workspace);
-      saveWorkspaces();
+        workspaces.value.unshift(workspace);
+        saveWorkspaces();
+      }
     }
   } catch (e) {
     console.error('Failed to import from folder:', e);
