@@ -1,10 +1,18 @@
 <template>
   <DialogBase :open="open" title="工作区管理" @close="$emit('close')">
     <div class="workspace-manager">
+      <!-- 导入项目 -->
+      <div class="section import-section">
+        <h4>导入项目</h4>
+        <button class="btn btn-secondary" @click="importFromFolder">
+          从文件夹导入项目
+        </button>
+      </div>
+
       <!-- 保存当前工作区 -->
       <div class="section save-section">
         <h4>保存当前工作区</h4>
-        
+
         <!-- 显示当前项目列表 -->
         <div v-if="localProjects.length > 0" class="current-projects">
           <div class="projects-header">当前项目列表 ({{ localProjects.length }}个):</div>
@@ -23,7 +31,7 @@
         <div v-else class="no-projects">
           当前没有项目
         </div>
-        
+
         <div class="input-group">
           <input
             v-model="workspaceName"
@@ -74,14 +82,6 @@
             </div>
           </div>
         </div>
-      </div>
-
-      <!-- 导入文件夹 -->
-      <div class="section import-section">
-        <h4>导入项目</h4>
-        <button class="btn btn-secondary" @click="importFromFolder">
-          从文件夹导入项目
-        </button>
       </div>
     </div>
   </DialogBase>
@@ -231,16 +231,8 @@ const importFromFolder = async () => {
         };
       });
 
-      // 直接使用默认名称创建工作区
-      const workspace: Workspace = {
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        name: `导入的工作区 ${new Date().toLocaleDateString()}`,
-        projects: newProjects,
-        createdAt: new Date().toISOString()
-      };
-
-      workspaces.value.unshift(workspace);
-      saveWorkspaces();
+      // 添加到本地项目列表
+      localProjects.value.push(...newProjects);
     }
   } catch (e) {
     console.error('Failed to import from folder:', e);
