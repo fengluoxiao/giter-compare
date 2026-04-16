@@ -249,6 +249,10 @@ const gitChanges = ref<GitStatus[]>([]);
 const fileTreeCache = ref<Map<string, { tree: FileNode[]; changes: GitStatus[]; timestamp: number }>>(new Map());
 const CACHE_MAX_AGE = 5 * 60 * 1000; // 缓存有效期5分钟
 
+// Diff 缓存 - 键为"项目路径:文件路径"，值为 diff 结果
+const diffCache = ref<Map<string, { leftLines: DiffLine[]; rightLines: DiffLine[]; isBinary: boolean; diffStats: any; timestamp: number }>>(new Map());
+const DIFF_CACHE_MAX_AGE = 2 * 60 * 1000; // Diff 缓存有效期2分钟
+
 // 暂存区状态
 const stagedFiles = ref<{ name: string; path: string; status?: string }[]>([]);
 const selectedStagedPath = ref<string>('');
@@ -333,10 +337,20 @@ onMounted(async () => {
       // 检查是否是结构变化（新增/删除文件或文件夹）
       const payload = event.payload;
       const isStructuralChange = payload?.is_structural_change === true;
+      const changedFilePath = payload?.path;
       
       if (isStructuralChange) {
-        // 文件结构变化，清除当前项目的缓存
+        // 文件结构变化，清除当前项目的文件树缓存
         clearFileTreeCache(currentPath.value);
+      }
+      
+      // 清除变更文件的 diff 缓存
+      if (changedFilePath) {
+        const diffCacheKey = getDiffCacheKey(currentPath.value, changedFilePath);
+        if (diffCache.value.has(diffCacheKey)) {
+          diffCache.value.delete(diffCacheKey);
+          console.log('Cleared diff cache for changed file:', changedFilePath);
+        }
       }
       
       refresh();
@@ -828,8 +842,14 @@ const removeProject = (projectId: string) => {
   const index = projects.value.findIndex(p => p.id === projectId);
   if (index === -1) return;
 
+  const projectPath = projects.value[index].path;
+
   projects.value.splice(index, 1);
   saveProjects();
+
+  // 清理被删除项目的缓存
+  clearFileTreeCache(projectPath);
+  clearDiffCache(projectPath);
 
   if (currentProjectId.value === projectId) {
     currentProjectId.value = '';
@@ -1398,8 +1418,67 @@ const handleScroll = (scrollTop: number) => {
   // 可以在这里添加额外的滚动处理逻辑
 };
 
+// 获取 diff 缓存键
+const getDiffCacheKey = (projectPath: string, filePath: string) => `${projectPath}:${filePath}`;
+
+// 获取 diff 缓存
+const getDiffFromCache = (key: string): { leftLines: DiffLine[]; rightLines: DiffLine[]; isBinary: boolean; diffStats: any } | null => {
+  const cached = diffCache.value.get(key);
+  if (!cached) return null;
+
+  const now = Date.now();
+  if (now - cached.timestamp > DIFF_CACHE_MAX_AGE) {
+    diffCache.value.delete(key);
+    return null;
+  }
+
+  console.log('Using cached diff for:', key);
+  return {
+    leftLines: JSON.parse(JSON.stringify(cached.leftLines)),
+    rightLines: JSON.parse(JSON.stringify(cached.rightLines)),
+    isBinary: cached.isBinary,
+    diffStats: cached.diffStats
+  };
+};
+
+// 设置 diff 缓存
+const setDiffCache = (key: string, result: { leftLines: DiffLine[]; rightLines: DiffLine[]; isBinary: boolean; diffStats: any }) => {
+  diffCache.value.set(key, {
+    leftLines: JSON.parse(JSON.stringify(result.leftLines)),
+    rightLines: JSON.parse(JSON.stringify(result.rightLines)),
+    isBinary: result.isBinary,
+    diffStats: result.diffStats,
+    timestamp: Date.now()
+  });
+};
+
+// 清除指定项目的 diff 缓存
+const clearDiffCache = (projectPath?: string) => {
+  if (projectPath) {
+    for (const key of diffCache.value.keys()) {
+      if (key.startsWith(projectPath + ':')) {
+        diffCache.value.delete(key);
+      }
+    }
+    console.log('Cleared diff cache for project:', projectPath);
+  } else {
+    diffCache.value.clear();
+    console.log('Cleared all diff caches');
+  }
+};
+
 // 加载文件 diff 内容
-const loadFileDiff = async (file: FileNode): Promise<{ leftLines: DiffLine[]; rightLines: DiffLine[]; isBinary: boolean; diffStats: any } | null> => {
+const loadFileDiff = async (file: FileNode, forceRefresh = false): Promise<{ leftLines: DiffLine[]; rightLines: DiffLine[]; isBinary: boolean; diffStats: any } | null> => {
+  const cacheKey = getDiffCacheKey(currentPath.value, file.path);
+
+  // 尝试使用缓存
+  if (!forceRefresh) {
+    const cached = getDiffFromCache(cacheKey);
+    if (cached) {
+      return cached;
+    }
+  }
+
   try {
     const fileStatus = file.status?.toLowerCase();
     let workContent = '';
@@ -1442,7 +1521,9 @@ const loadFileDiff = async (file: FileNode): Promise<{ leftLines: DiffLine[]; ri
     const isBinaryFile = workContent === '[二进制文件]' || indexContent === '[二进制文件]';
 
     if (isBinaryFile) {
-      return { leftLines: [], rightLines: [], isBinary: true, diffStats: null };
+      const result = { leftLines: [], rightLines: [], isBinary: true, diffStats: null };
+      setDiffCache(cacheKey, result);
+      return result;
     }
 
     // 对于已删除的文件，直接显示完整的旧文件内容，所有行标记为 removed
@@ -1466,12 +1547,14 @@ const loadFileDiff = async (file: FileNode): Promise<{ leftLines: DiffLine[]; ri
         });
       }
 
-      return {
+      const result = {
         leftLines: alignedLeftLines,
         rightLines: alignedRightLines,
         isBinary: false,
         diffStats: { added: 0, removed: oldLines.length, changed: 0 }
       };
+      setDiffCache(cacheKey, result);
+      return result;
     }
 
     const diffResult = await invoke<FileDiff>('compare_strings', {
@@ -1642,12 +1725,17 @@ const loadFileDiff = async (file: FileNode): Promise<{ leftLines: DiffLine[]; ri
       }
     }
 
-    return {
+    const result = {
       leftLines: alignedLeftLines,
       rightLines: alignedRightLines,
       isBinary: false,
       diffStats: { added, removed, changed }
     };
+
+    // 保存到缓存
+    setDiffCache(cacheKey, result);
+
+    return result;
   } catch (e) {
     console.error('Failed to load diff:', e);
     return null;
