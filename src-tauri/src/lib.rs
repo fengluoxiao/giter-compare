@@ -8,6 +8,9 @@ use std::path::Path;
 use std::time::Duration;
 use tauri::{Emitter, Manager};
 
+// 声明搜索模块
+mod search;
+
 // Windows 平台隐藏 CMD 窗口
 #[cfg(target_os = "windows")]
 use std::os::windows::process::CommandExt;
@@ -1030,7 +1033,9 @@ pub fn run() {
             import_vscode_plugin,
             get_installed_plugins,
             remove_plugin,
-            open_system_settings
+            open_system_settings,
+            search::search_in_file,
+            search::search_in_directory
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

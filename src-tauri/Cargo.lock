@@ -1371,6 +1371,7 @@ dependencies = [
  "git2",
  "notify",
  "notify-debouncer-mini",
+ "regex",
  "serde",
  "serde_json",
  "tauri",

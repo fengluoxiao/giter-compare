@@ -25,3 +25,4 @@ git2 = "0.19"
 notify = "6"
 notify-debouncer-mini = { version = "0.4", default-features = false }
 dirs = "5"
+regex = "1"

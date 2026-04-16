@@ -9,6 +9,15 @@
       </div>
     </div>
 
+    <!-- Inline Search -->
+    <InlineSearch
+      v-if="currentFile && !isBinary"
+      ref="inlineSearch"
+      :content="combinedContent"
+      @close="handleSearchClose"
+      @highlight-match="handleHighlightMatch"
+    />
+
     <div v-if="currentFile" class="diff-content">
       <div v-if="isBinary" class="binary-placeholder">
         [二进制文件]
@@ -64,9 +73,10 @@
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue';
+import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue';
 import ShikiDiffLines from './ShikiDiffLines.vue';
 import Minimap from './Minimap.vue';
+import InlineSearch, { type SearchMatch } from './InlineSearch.vue';
 
 interface FileNode {
   name: string;
@@ -107,12 +117,49 @@ const emit = defineEmits<{
 // 代码内容区域 refs，用于同步滚动
 const leftCodeContent = ref<HTMLElement | null>(null);
 const rightCodeContent = ref<HTMLElement | null>(null);
+const inlineSearch = ref<InstanceType<typeof InlineSearch> | null>(null);
 let isSyncing = false;
 
 // Minimap 相关
 const leftScrollTop = ref(0);
 const codeContainerHeight = ref(0);
 const codeContentHeight = ref(0);
+
+// 搜索相关
+const searchMatches = ref<SearchMatch[]>([]);
+const currentSearchMatch = ref<SearchMatch | null>(null);
+
+// 合并左右两侧内容用于搜索
+const combinedContent = computed(() => {
+  const leftContent = props.leftLines.map(line => line.content).join('\n');
+  const rightContent = props.rightLines.map(line => line.content).join('\n');
+  return `${leftContent}\n--- 分隔线 ---\n${rightContent}`;
+});
+
+// 搜索相关函数
+const handleSearchClose = () => {
+  searchMatches.value = [];
+  currentSearchMatch.value = null;
+};
+
+const handleHighlightMatch = (matches: SearchMatch[], currentMatch: SearchMatch) => {
+  searchMatches.value = matches;
+  currentSearchMatch.value = currentMatch;
+  
+  // TODO: 实现高亮显示和跳转逻辑
+  if (currentMatch) {
+    console.log('跳转到匹配项:', currentMatch.lineNumber, currentMatch.column);
+  }
+};
+
+// 快捷键监听
+const handleKeyDown = (event: KeyboardEvent) => {
+  // Ctrl/Cmd + F 打开搜索
+  if ((event.ctrlKey || event.metaKey) && event.key === 'f') {
+    event.preventDefault();
+    inlineSearch.value?.openSearch();
+  }
+};
 
 // 同步滚动函数
 const syncScroll = (source: 'left' | 'right') => {
@@ -155,6 +202,15 @@ const handleMinimapJump = (scrollTop: number) => {
   // 更新 minimap 状态
   leftScrollTop.value = scrollTop;
 };
+
+// 生命周期钩子
+onMounted(() => {
+  window.addEventListener('keydown', handleKeyDown);
+});
+
+onUnmounted(() => {
+  window.removeEventListener('keydown', handleKeyDown);
+});
 
 // 监听线条变化，更新 minimap 尺寸
 watch(() => props.leftLines, () => {
