@@ -777,11 +777,12 @@ const saveProjects = () => {
 
 // 导出项目列表为 JSON 文件
 const exportProjects = async () => {
+  let filePath: string | null = null;
   try {
     const { save } = await import('@tauri-apps/plugin-dialog');
     const { writeTextFile } = await import('@tauri-apps/plugin-fs');
 
-    const filePath = await save({
+    filePath = await save({
       filters: [
         { name: 'JSON', extensions: ['json'] }
       ],
@@ -796,11 +797,14 @@ const exportProjects = async () => {
       };
       await writeTextFile(filePath, JSON.stringify(exportData, null, 2));
       alert('项目列表导出成功！');
+      return; // 成功导出后直接返回
     }
   } catch (e: any) {
     console.error('Failed to export projects:', e);
-    // 导出成功但用户取消，不显示错误
-    if (e.toString().includes('cancelled') || e.toString().includes('Canceled')) {
+    console.log('Error details:', e.toString());
+    console.log('File path:', filePath);
+    // 用户取消保存对话框，不显示错误
+    if (!filePath) {
       return;
     }
     const errorMsg = e.toString();
