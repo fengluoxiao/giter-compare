@@ -13,6 +13,7 @@
       @navigate-next="navigateNext"
       @refresh="refresh"
       @manage-plugins="showPluginManager = true"
+      @manage-workspace="showWorkspaceManager = true"
     />
 
     <!-- 标签栏 -->
@@ -120,6 +121,14 @@
       @close="showPluginManager = false"
       @plugins-changed="onPluginsChanged"
     />
+
+    <!-- 工作区管理对话框 -->
+    <WorkspaceManagerDialog
+      :open="showWorkspaceManager"
+      :current-projects="projects"
+      @close="showWorkspaceManager = false"
+      @load-workspace="onLoadWorkspace"
+    />
   </div>
 </template>
 
@@ -133,7 +142,7 @@ import ProjectSidebar from './ProjectSidebar.vue';
 import FileTreeSidebar from './FileTreeSidebar.vue';
 import DiffViewer from './DiffViewer.vue';
 import TabBar, { type Tab } from './TabBar.vue';
-import { FileCompareDialog, TextCompareDialog, AddProjectDialog, PluginManagerDialog } from './dialogs';
+import { FileCompareDialog, TextCompareDialog, AddProjectDialog, PluginManagerDialog, WorkspaceManagerDialog } from './dialogs';
 
 interface FileNode {
   name: string;
@@ -192,6 +201,7 @@ const showCompareFile = ref(false);
 const showTextCompare = ref(false);
 const showAddProject = ref(false);
 const showPluginManager = ref(false);
+const showWorkspaceManager = ref(false);
 
 // 调试：监听 showPluginManager 变化
 watch(showPluginManager, (newVal, oldVal) => {
@@ -841,6 +851,24 @@ const loadProjects = () => {
   if (savedFileWidth) fileSidebarWidth.value = parseInt(savedFileWidth);
   if (savedProjectCollapsed) isProjectSidebarCollapsed.value = savedProjectCollapsed === 'true';
   if (savedFileCollapsed) isFileSidebarCollapsed.value = savedFileCollapsed === 'true';
+};
+
+// 加载工作区
+const onLoadWorkspace = (workspaceProjects: Project[]) => {
+  // 合并工作区项目到现有项目，避免重复
+  const existingPaths = new Set(projects.value.map(p => p.path));
+
+  for (const project of workspaceProjects) {
+    if (!existingPaths.has(project.path)) {
+      projects.value.push({
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        name: project.name,
+        path: project.path
+      });
+    }
+  }
+
+  saveProjects();
 };
 
 // 侧边栏折叠/展开

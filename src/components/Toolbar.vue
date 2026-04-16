@@ -14,6 +14,9 @@
       <span class="path-display">{{ currentPath || '未选择文件夹' }}</span>
     </div>
     <div class="toolbar-right">
+      <button class="btn btn-secondary" @click="$emit('manage-workspace')" title="工作区管理">
+        💼 工作区
+      </button>
       <button class="btn btn-secondary" @click="$emit('manage-plugins')" title="语法高亮插件">
         🔌 插件
       </button>
@@ -49,6 +52,7 @@ defineEmits<{
   'navigate-next': [];
   'refresh': [];
   'manage-plugins': [];
+  'manage-workspace': [];
 }>();
 </script>
 
