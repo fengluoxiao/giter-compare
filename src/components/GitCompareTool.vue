@@ -945,6 +945,17 @@ const loadProjects = () => {
       console.error('Failed to load projects:', e);
     }
   }
+
+  // 加载侧边栏状态
+  const savedProjectWidth = localStorage.getItem('giter-project-sidebar-width');
+  const savedFileWidth = localStorage.getItem('giter-file-sidebar-width');
+  const savedProjectCollapsed = localStorage.getItem('giter-project-sidebar-collapsed');
+  const savedFileCollapsed = localStorage.getItem('giter-file-sidebar-collapsed');
+
+  if (savedProjectWidth) projectSidebarWidth.value = parseInt(savedProjectWidth);
+  if (savedFileWidth) fileSidebarWidth.value = parseInt(savedFileWidth);
+  if (savedProjectCollapsed) isProjectSidebarCollapsed.value = savedProjectCollapsed === 'true';
+  if (savedFileCollapsed) isFileSidebarCollapsed.value = savedFileCollapsed === 'true';
 };
 
 // 导出项目列表为 JSON 文件
@@ -1120,27 +1131,6 @@ const openSystemSettings = async () => {
     // 如果命令失败，尝试用浏览器打开设置页面
     window.open('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles', '_blank');
   }
-};
-
-const loadProjects = () => {
-  const saved = localStorage.getItem('giter-projects');
-  if (saved) {
-    try {
-      projects.value = JSON.parse(saved);
-    } catch (e) {
-      console.error('Failed to load projects:', e);
-    }
-  }
-
-  const savedProjectWidth = localStorage.getItem('giter-project-sidebar-width');
-  const savedFileWidth = localStorage.getItem('giter-file-sidebar-width');
-  const savedProjectCollapsed = localStorage.getItem('giter-project-sidebar-collapsed');
-  const savedFileCollapsed = localStorage.getItem('giter-file-sidebar-collapsed');
-
-  if (savedProjectWidth) projectSidebarWidth.value = parseInt(savedProjectWidth);
-  if (savedFileWidth) fileSidebarWidth.value = parseInt(savedFileWidth);
-  if (savedProjectCollapsed) isProjectSidebarCollapsed.value = savedProjectCollapsed === 'true';
-  if (savedFileCollapsed) isFileSidebarCollapsed.value = savedFileCollapsed === 'true';
 };
 
 // 加载工作区
