@@ -227,7 +227,7 @@ window.addEventListener('click', hideContextMenu);
 }
 
 .tab-item.modified .tab-name {
-  font-style: italic;
+  /* 移除斜体，改用蓝点表示修改状态 */
 }
 
 .tab-icon {
