@@ -912,20 +912,41 @@ const importProjects = async () => {
       if (importData.projects && Array.isArray(importData.projects)) {
         // 合并导入的项目，避免重复
         const existingPaths = new Set(projects.value.map(p => p.path));
+        const newProjects: Project[] = [];
         let addedCount = 0;
 
         for (const project of importData.projects) {
           if (!existingPaths.has(project.path)) {
-            projects.value.push({
+            const newProject: Project = {
               id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
               name: project.name,
               path: project.path
-            });
+            };
+            projects.value.push(newProject);
+            newProjects.push(newProject);
             addedCount++;
           }
         }
 
         saveProjects();
+
+        // 预加载所有新导入项目的缓存
+        if (newProjects.length > 0) {
+          console.log('Preloading cache for imported projects:', newProjects.length);
+          const preloadPromises = newProjects.map(async (project) => {
+            try {
+              if (!fileTreeCache.value.has(project.path)) {
+                console.log('Preloading cache for imported:', project.path);
+                await loadFileTree(project.path);
+              }
+            } catch (e) {
+              console.error('Failed to preload cache for imported project:', project.path, e);
+            }
+          });
+          await Promise.all(preloadPromises);
+          console.log('All imported projects preloaded');
+        }
+
         alert(`成功导入 ${addedCount} 个项目！`);
       } else {
         alert('无效的项目文件格式');
