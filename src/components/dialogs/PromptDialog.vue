@@ -1,164 +1,179 @@
 <template>
-  <div v-if="open" class="dialog-overlay" @click.self="handleCancel">
-    <div class="dialog">
-      <div class="dialog-header">
-        <h3>{{ title }}</h3>
+  <Teleport to="body">
+    <Transition name="fade">
+      <div v-if="open" class="modal-overlay" @click.self="handleCancel">
+        <div class="modal-container">
+          <div class="modal-header">
+            <h3 class="modal-title">{{ title }}</h3>
+          </div>
+          <div class="modal-body">
+            <input
+              ref="inputRef"
+              v-model="inputValue"
+              type="text"
+              class="modal-input"
+              :placeholder="placeholder"
+              @keyup.enter="handleConfirm"
+              @keyup.esc="handleCancel"
+            />
+          </div>
+          <div class="modal-footer">
+            <button class="modal-btn modal-btn--cancel" @click="handleCancel">取消</button>
+            <button class="modal-btn modal-btn--confirm" @click="handleConfirm">确定</button>
+          </div>
+        </div>
       </div>
-      <div class="dialog-content">
-        <input
-          ref="inputRef"
-          v-model="inputValue"
-          type="text"
-          :placeholder="placeholder"
-          class="dialog-input"
-          @keyup.enter="handleConfirm"
-          @keyup.escape="handleCancel"
-        />
-      </div>
-      <div class="dialog-actions">
-        <button class="btn btn-primary" @click="handleConfirm">确定</button>
-        <button class="btn btn-secondary" @click="handleCancel">取消</button>
-      </div>
-    </div>
-  </div>
+    </Transition>
+  </Teleport>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, nextTick } from 'vue';
+import { ref, watch, nextTick } from 'vue'
 
-const props = defineProps<{
-  open: boolean;
-  title: string;
-  placeholder?: string;
-  defaultValue?: string;
-}>();
+interface Props {
+  open: boolean
+  title: string
+  placeholder?: string
+  defaultValue?: string
+}
+
+const props = defineProps<Props>()
 
 const emit = defineEmits<{
-  confirm: [value: string];
-  cancel: [];
-}>();
+  confirm: [value: string]
+  cancel: []
+}>()
 
-const inputValue = ref('');
-const inputRef = ref<HTMLInputElement | null>(null);
+const inputValue = ref('')
+const inputRef = ref<HTMLInputElement | null>(null)
 
-watch(() => props.open, (newVal) => {
-  if (newVal) {
-    inputValue.value = props.defaultValue || '';
-    nextTick(() => {
-      inputRef.value?.focus();
-    });
+watch(
+  () => props.open,
+  (isOpen) => {
+    if (isOpen) {
+      inputValue.value = props.defaultValue || ''
+      nextTick(() => {
+        inputRef.value?.focus()
+        inputRef.value?.select()
+      })
+    }
   }
-});
+)
 
 const handleConfirm = () => {
-  if (inputValue.value.trim()) {
-    emit('confirm', inputValue.value.trim());
+  const value = inputValue.value.trim()
+  if (value) {
+    emit('confirm', value)
   }
-};
+}
 
 const handleCancel = () => {
-  emit('cancel');
-};
+  emit('cancel')
+}
 </script>
 
 <style scoped>
-.dialog-overlay {
+.modal-overlay {
   position: fixed;
-  top: 0;
-  left: 0;
-  right: 0;
-  bottom: 0;
-  background-color: rgba(0, 0, 0, 0.4);
+  inset: 0;
+  background: rgba(0, 0, 0, 0.5);
   display: flex;
   align-items: center;
   justify-content: center;
   z-index: 9999;
+  padding: 20px;
 }
 
-.dialog {
-  background-color: #f3f3f3;
-  border-radius: 6px;
-  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
-  width: 90%;
-  max-width: 360px;
-  overflow: hidden;
-  display: flex;
-  flex-direction: column;
-  border: 1px solid #e0e0e0;
-}
-
-.dialog-header {
-  padding: 16px 20px 8px;
-}
-
-.dialog-header h3 {
-  margin: 0;
-  font-size: 15px;
-  font-weight: 600;
-  color: #333;
-}
-
-.dialog-content {
-  padding: 8px 20px 16px;
-}
-
-.dialog-input {
+.modal-container {
+  background: #ffffff;
+  border-radius: 8px;
   width: 100%;
-  padding: 8px 12px;
-  border: 1px solid #ccc;
-  border-radius: 3px;
-  background-color: #fff;
-  color: #333;
-  font-size: 13px;
-  box-sizing: border-box;
-  transition: border-color 0.2s;
+  max-width: 400px;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
+  overflow: hidden;
+}
+
+.modal-header {
+  padding: 20px 24px 0;
+}
+
+.modal-title {
+  margin: 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1f2937;
+  line-height: 1.4;
+}
+
+.modal-body {
+  padding: 16px 24px;
+}
+
+.modal-input {
+  width: 100%;
+  height: 40px;
+  padding: 0 12px;
+  border: 1px solid #d1d5db;
+  border-radius: 6px;
+  font-size: 14px;
+  color: #1f2937;
+  background: #ffffff;
+  transition: all 0.2s;
   outline: none;
+  box-sizing: border-box;
 }
 
-.dialog-input:focus {
-  border-color: #007acc;
+.modal-input:focus {
+  border-color: #3b82f6;
+  box-shadow: 0 0 0 3px rgba(59, 130, 246, 0.1);
 }
 
-.dialog-input::placeholder {
-  color: #999;
+.modal-input::placeholder {
+  color: #9ca3af;
 }
 
-.dialog-actions {
+.modal-footer {
+  padding: 0 24px 20px;
   display: flex;
-  gap: 8px;
-  padding: 12px 20px 16px;
   justify-content: flex-end;
+  gap: 8px;
 }
 
-.dialog-actions .btn {
-  padding: 6px 16px;
-  border-radius: 3px;
-  border: 1px solid transparent;
-  cursor: pointer;
-  font-size: 13px;
+.modal-btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  font-size: 14px;
   font-weight: 500;
-  transition: all 0.15s;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: none;
 }
 
-.dialog-actions .btn-primary {
-  background-color: #0e639c;
-  color: white;
-  border-color: #0e639c;
+.modal-btn--cancel {
+  background: #f3f4f6;
+  color: #374151;
 }
 
-.dialog-actions .btn-primary:hover {
-  background-color: #1177bb;
-  border-color: #1177bb;
+.modal-btn--cancel:hover {
+  background: #e5e7eb;
 }
 
-.dialog-actions .btn-secondary {
-  background-color: #fff;
-  color: #333;
-  border-color: #ccc;
+.modal-btn--confirm {
+  background: #3b82f6;
+  color: #ffffff;
 }
 
-.dialog-actions .btn-secondary:hover {
-  background-color: #e6e6e6;
-  border-color: #b3b3b3;
+.modal-btn--confirm:hover {
+  background: #2563eb;
+}
+
+.fade-enter-active,
+.fade-leave-active {
+  transition: opacity 0.2s ease;
+}
+
+.fade-enter-from,
+.fade-leave-to {
+  opacity: 0;
 }
 </style>

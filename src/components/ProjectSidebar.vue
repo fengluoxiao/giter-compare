@@ -6,7 +6,7 @@
   >
     <div class="project-header">
       <div class="workspace-selector" v-if="!isCollapsed">
-        <select v-model="currentWorkspaceId" @change="onWorkspaceChange">
+        <select :value="currentWorkspaceId" @change="onWorkspaceChange">
           <option v-for="ws in workspaces" :key="ws.id" :value="ws.id">
             📁 {{ ws.name }}
           </option>
@@ -116,10 +116,9 @@ const emit = defineEmits<{
   'switch-workspace': [workspaceId: string];
 }>();
 
-const currentWorkspaceId = defineModel<string>('currentWorkspaceId');
-
-const onWorkspaceChange = () => {
-  emit('switch-workspace', currentWorkspaceId.value);
+const onWorkspaceChange = (event: Event) => {
+  const target = event.target as HTMLSelectElement;
+  emit('switch-workspace', target.value);
 };
 
 // 从路径获取文件夹名称
@@ -179,8 +178,8 @@ const getFolderName = (path: string): string => {
 }
 
 .btn-add-workspace {
-  width: 24px;
-  height: 24px;
+  width: 30px;
+  height: 30px;
   display: flex;
   align-items: center;
   justify-content: center;
@@ -191,6 +190,7 @@ const getFolderName = (path: string): string => {
   cursor: pointer;
   transition: all 0.2s;
   padding: 0;
+  flex-shrink: 0;
 }
 
 .btn-add-workspace svg {
