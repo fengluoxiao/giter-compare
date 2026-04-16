@@ -898,6 +898,7 @@ const switchProject = async (project: Project) => {
   selectedStagedPath.value = '';
   
   await loadFileTree(project.path);
+  await loadStagedFiles(); // 重新加载当前项目的更改列表
   await invoke('start_file_watcher', { repoPath: project.path });
 };
 
