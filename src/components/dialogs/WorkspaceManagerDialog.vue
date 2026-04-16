@@ -17,7 +17,7 @@
           </button>
         </div>
         <button class="btn btn-secondary btn-save-current" @click="saveCurrentWorkspace">
-          一键保存当前项目
+          导入当前项目列表
         </button>
       </div>
 
