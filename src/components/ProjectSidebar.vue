@@ -190,6 +190,13 @@ const getFolderName = (path: string): string => {
   color: var(--text-secondary);
   cursor: pointer;
   transition: all 0.2s;
+  padding: 0;
+}
+
+.btn-add-workspace svg {
+  width: 14px;
+  height: 14px;
+  fill: currentColor;
 }
 
 .btn-add-workspace:hover {
