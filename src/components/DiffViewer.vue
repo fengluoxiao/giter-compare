@@ -3,11 +3,9 @@
     <div v-if="currentFile" class="file-info-bar">
       <div class="file-info">
         <span class="file-label">旧版本</span>
-        <span class="file-path">{{ currentFile.path }}</span>
       </div>
       <div class="file-info">
         <span class="file-label">新版本</span>
-        <span class="file-path">{{ currentFile.path }}</span>
       </div>
     </div>
 

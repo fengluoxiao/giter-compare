@@ -3,7 +3,6 @@
     <!-- 工具栏 -->
     <Toolbar
       :theme="theme"
-      :current-path="currentPath"
       :has-prev="hasPrev"
       :has-next="hasNext"
       @compare-file="showCompareFileDialog"

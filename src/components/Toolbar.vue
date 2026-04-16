@@ -10,9 +10,6 @@
         比对文本
       </button>
     </div>
-    <div class="toolbar-center">
-      <span class="path-display">{{ currentPath || '未选择文件夹' }}</span>
-    </div>
     <div class="toolbar-right">
       <button class="btn btn-secondary" @click="$emit('manage-workspace')" title="工作区管理">
         💼 工作区
@@ -29,7 +26,7 @@
       <button class="btn btn-secondary" @click="$emit('navigate-next')" title="下一个" :disabled="!hasNext">
         ⬇️ 下一个
       </button>
-      <button class="btn btn-secondary" @click="$emit('refresh', $event)" title="刷新 (Shift+点击强制刷新)">
+      <button class="btn btn-secondary" @click="$emit('refresh', $event)" title="刷新 (Shift+ 点击强制刷新)">
         🔄 刷新
       </button>
     </div>
@@ -39,7 +36,6 @@
 <script setup lang="ts">
 defineProps<{
   theme: string;
-  currentPath: string;
   hasPrev: boolean;
   hasNext: boolean;
 }>();
@@ -72,19 +68,5 @@ defineEmits<{
   display: flex;
   align-items: center;
   gap: 8px;
-}
-
-.toolbar-center {
-  flex: 1;
-  text-align: center;
-  overflow: hidden;
-}
-
-.path-display {
-  font-size: 13px;
-  color: var(--text-secondary);
-  white-space: nowrap;
-  overflow: hidden;
-  text-overflow: ellipsis;
 }
 </style>
