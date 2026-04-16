@@ -294,58 +294,65 @@ onMounted(() => {
 .current-projects {
   margin-bottom: 16px;
   border: 1px solid var(--border-color);
-  border-radius: 6px;
-  padding: 12px;
-  background-color: var(--bg-secondary);
+  border-radius: 8px;
+  background-color: var(--bg-primary);
 }
 
 .projects-header {
-  font-size: 12px;
-  font-weight: 600;
+  font-size: 13px;
+  font-weight: 500;
   color: var(--text-primary);
-  margin-bottom: 8px;
-  padding-bottom: 8px;
+  padding: 12px 16px;
+  background-color: var(--bg-secondary);
   border-bottom: 1px solid var(--border-color);
+  border-radius: 8px 8px 0 0;
 }
 
 .projects-list {
-  max-height: 150px;
+  max-height: 200px;
   overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
+  padding: 8px;
 }
 
 .project-item {
   display: flex;
-  flex-direction: column;
-  padding: 6px 8px;
-  background-color: var(--bg-primary);
-  border-radius: 4px;
-  border: 1px solid var(--border-color);
+  align-items: center;
+  gap: 12px;
+  padding: 10px 12px;
+  border-radius: 6px;
+  transition: background-color 0.2s;
+}
+
+.project-item:hover {
+  background-color: var(--bg-hover);
+}
+
+.project-item:not(:last-child) {
+  border-bottom: 1px solid var(--border-color);
 }
 
 .project-name {
-  font-size: 13px;
+  font-size: 14px;
   font-weight: 500;
   color: var(--text-primary);
+  flex-shrink: 0;
 }
 
 .project-path {
-  font-size: 11px;
+  font-size: 12px;
   color: var(--text-secondary);
-  margin-top: 2px;
   word-break: break-all;
+  flex: 1;
 }
 
 .no-projects {
   text-align: center;
-  padding: 20px;
+  padding: 24px;
   color: var(--text-secondary);
   font-size: 13px;
   margin-bottom: 16px;
   border: 1px dashed var(--border-color);
-  border-radius: 6px;
+  border-radius: 8px;
 }
 
 .workspace-list {
