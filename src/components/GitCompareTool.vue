@@ -1382,18 +1382,19 @@ const loadFileTree = async (path: string, forceRefresh = false) => {
     // 保存变更数据用于检测是否有已删除的文件
     gitChanges.value = changes;
 
+    // 构建文件树（不包含已删除的文件）
     fileTree.value = await buildFileTreeRecursive(entries, path, changes);
 
-    // 如果有已删除的文件且用户选择显示，则添加到文件树
+    // 保存到缓存（缓存不包含已删除的文件）
+    setCachedFileTree(path, fileTree.value, changes);
+
+    // 如果有已删除的文件且用户选择显示，则添加到文件树（在缓存之后）
     if (showDeletedFiles.value) {
       const deletedChanges = changes.filter(c => c.status === 'Deleted');
       for (const deleted of deletedChanges) {
         addDeletedFileToTree(deleted.path);
       }
     }
-
-    // 保存到缓存
-    setCachedFileTree(path, fileTree.value, changes);
   } catch (e) {
     console.error('Failed to load file tree:', e);
     alert('加载文件树失败: ' + e);
