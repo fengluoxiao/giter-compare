@@ -29,7 +29,7 @@
       <button class="btn btn-secondary" @click="$emit('navigate-next')" title="下一个" :disabled="!hasNext">
         ⬇️ 下一个
       </button>
-      <button class="btn btn-secondary" @click="$emit('refresh')" title="刷新">
+      <button class="btn btn-secondary" @click="$emit('refresh', $event)" title="刷新 (Shift+点击强制刷新)">
         🔄 刷新
       </button>
     </div>

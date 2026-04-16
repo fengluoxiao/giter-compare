@@ -44,13 +44,14 @@
     </div>
 
     <template #actions>
-      <button class="btn btn-secondary" @click="$emit('close')">取消</button>
+      <button class="btn btn-secondary" @click="$emit('close')" :disabled="isLoading">取消</button>
       <button
         class="btn btn-primary"
         @click="$emit('confirm')"
-        :disabled="pendingProjects.length === 0"
+        :disabled="pendingProjects.length === 0 || isLoading"
       >
-        确定添加 ({{ pendingProjects.length }})
+        <span v-if="isLoading" class="loading-spinner"></span>
+        <span v-else>确定添加 ({{ pendingProjects.length }})</span>
       </button>
     </template>
   </DialogBase>
@@ -71,6 +72,7 @@ const props = defineProps<{
   pendingProjects: PendingProject[];
   editingIndex: number;
   editingName: string;
+  isLoading?: boolean;
 }>();
 
 const emit = defineEmits<{
@@ -223,5 +225,21 @@ watch(() => props.editingIndex, (newIndex) => {
 .btn-remove:hover {
   background-color: var(--bg-hover);
   color: #f44336;
+}
+
+.loading-spinner {
+  display: inline-block;
+  width: 16px;
+  height: 16px;
+  border: 2px solid rgba(255, 255, 255, 0.3);
+  border-top-color: #fff;
+  border-radius: 50%;
+  animation: spin 0.8s linear infinite;
+}
+
+@keyframes spin {
+  to {
+    transform: rotate(360deg);
+  }
 }
 </style>

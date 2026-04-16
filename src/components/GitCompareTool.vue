@@ -11,7 +11,7 @@
       @toggle-theme="toggleTheme"
       @navigate-prev="navigatePrev"
       @navigate-next="navigateNext"
-      @refresh="refresh"
+      @refresh="handleRefresh"
       @manage-plugins="showPluginManager = true"
       @manage-workspace="showWorkspaceManager = true"
     />
@@ -106,6 +106,7 @@
       :pending-projects="pendingProjects"
       :editing-index="editingPendingIndex"
       v-model:editing-name="editingPendingName"
+      :is-loading="isAddingProjects"
       @close="closeAddProjectDialog"
       @select-path="selectProjectPath"
       @remove="removeFromPending"
@@ -129,6 +130,30 @@
       @close="showWorkspaceManager = false"
       @load-workspace="onLoadWorkspace"
     />
+
+    <!-- 权限提示弹窗 -->
+    <div v-if="showPermissionDialog" class="permission-overlay" @click.self="showPermissionDialog = false">
+      <div class="permission-dialog">
+        <div class="permission-header">
+          <h3>需要磁盘访问权限</h3>
+          <button class="close-btn" @click="showPermissionDialog = false">×</button>
+        </div>
+        <div class="permission-content">
+          <p>导出项目列表需要授予应用磁盘访问权限。</p>
+          <p>请按照以下步骤操作：</p>
+          <ol>
+            <li>打开 <strong>系统设置</strong> → <strong>隐私与安全性</strong> → <strong>完全磁盘访问权限</strong></li>
+            <li>点击 <strong>+</strong> 按钮</li>
+            <li>找到并添加 <strong>git-compare-tool</strong> 应用</li>
+            <li>重启应用</li>
+          </ol>
+        </div>
+        <div class="permission-actions">
+          <button class="btn btn-primary" @click="openSystemSettings">打开系统设置</button>
+          <button class="btn btn-secondary" @click="showPermissionDialog = false">稍后再说</button>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -202,6 +227,7 @@ const showTextCompare = ref(false);
 const showAddProject = ref(false);
 const showPluginManager = ref(false);
 const showWorkspaceManager = ref(false);
+const showPermissionDialog = ref(false);
 
 // 调试：监听 showPluginManager 变化
 watch(showPluginManager, (newVal, oldVal) => {
@@ -219,6 +245,10 @@ const isBinary = ref(false);
 const diffStats = ref<{ added: number; removed: number; changed: number } | null>(null);
 const gitChanges = ref<GitStatus[]>([]);
 
+// 文件树缓存 - 键为项目路径，值为文件树数据
+const fileTreeCache = ref<Map<string, { tree: FileNode[]; changes: GitStatus[]; timestamp: number }>>(new Map());
+const CACHE_MAX_AGE = 5 * 60 * 1000; // 缓存有效期5分钟
+
 // 暂存区状态
 const stagedFiles = ref<{ name: string; path: string; status?: string }[]>([]);
 const selectedStagedPath = ref<string>('');
@@ -235,6 +265,7 @@ const newProjectPath = ref('');
 const pendingProjects = ref<{ name: string; path: string }[]>([]);
 const editingPendingIndex = ref<number>(-1);
 const editingPendingName = ref('');
+const isAddingProjects = ref(false); // 防抖状态：是否正在添加项目中
 
 // 侧边栏宽度和折叠状态
 const projectSidebarWidth = ref(280);
@@ -297,8 +328,17 @@ onMounted(async () => {
 
   loadProjects();
 
-  unlistenFileChange = await listen('file-changed', () => {
+  unlistenFileChange = await listen('file-changed', (event: any) => {
     if (currentPath.value) {
+      // 检查是否是结构变化（新增/删除文件或文件夹）
+      const payload = event.payload;
+      const isStructuralChange = payload?.is_structural_change === true;
+      
+      if (isStructuralChange) {
+        // 文件结构变化，清除当前项目的缓存
+        clearFileTreeCache(currentPath.value);
+      }
+      
       refresh();
     }
   });
@@ -729,24 +769,59 @@ const closeAddProjectDialog = () => {
 };
 
 const confirmAddProjects = async () => {
-  if (pendingProjects.value.length === 0) return;
+  // 防抖：如果正在添加中，直接返回
+  if (isAddingProjects.value || pendingProjects.value.length === 0) return;
 
-  for (const item of pendingProjects.value) {
-    console.log('Adding project:', item.name, item.path);
-    const project: Project = {
-      id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-      name: item.name,
-      path: item.path
-    };
-    projects.value.push(project);
+  isAddingProjects.value = true;
+
+  try {
+    const newProjects: Project[] = [];
+    
+    // 第一步：创建项目对象
+    for (const item of pendingProjects.value) {
+      console.log('Adding project:', item.name, item.path);
+      const project: Project = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        name: item.name,
+        path: item.path
+      };
+      newProjects.push(project);
+      projects.value.push(project);
+    }
+
+    saveProjects();
+
+    // 第二步：预加载所有新项目的文件树到缓存（在后台进行）
+    console.log('Preloading file tree cache for', newProjects.length, 'projects...');
+    const preloadPromises = newProjects.map(async (project) => {
+      try {
+        // 检查是否已有缓存
+        if (!fileTreeCache.value.has(project.path)) {
+          console.log('Preloading cache for:', project.path);
+          await loadFileTree(project.path);
+        } else {
+          console.log('Cache already exists for:', project.path);
+        }
+      } catch (e) {
+        console.error('Failed to preload cache for:', project.path, e);
+      }
+    });
+    
+    // 等待所有预加载完成
+    await Promise.all(preloadPromises);
+    console.log('All projects preloaded');
+
+    // 第三步：切换到最后一个添加的项目
+    const lastProject = newProjects[newProjects.length - 1];
+    await switchProject(lastProject);
+
+    closeAddProjectDialog();
+  } finally {
+    // 延迟重置防抖状态，防止快速连续点击
+    setTimeout(() => {
+      isAddingProjects.value = false;
+    }, 500);
   }
-
-  saveProjects();
-
-  const lastProject = projects.value[projects.value.length - 1];
-  await switchProject(lastProject);
-
-  closeAddProjectDialog();
 };
 
 const removeProject = (projectId: string) => {
@@ -809,12 +884,8 @@ const exportProjects = async () => {
     }
     const errorMsg = e.toString();
     if (errorMsg.includes('Operation not permitted') || errorMsg.includes('os error 1')) {
-      // 显示权限提示
-      const goToSettings = confirm('导出失败：需要磁盘访问权限。\n\n点击"确定"查看如何设置权限，点击"取消"稍后再试。');
-      if (goToSettings) {
-        // 打开工作区管理弹窗，里面有权限设置说明
-        showWorkspaceManager.value = true;
-      }
+      // 显示权限提示 - 使用自定义弹窗而不是 confirm
+      showPermissionDialog.value = true;
     } else {
       alert('导出失败: ' + e);
     }
@@ -863,6 +934,17 @@ const importProjects = async () => {
   } catch (e) {
     console.error('Failed to import projects:', e);
     alert('导入失败: ' + e);
+  }
+};
+
+// 打开系统设置
+const openSystemSettings = async () => {
+  try {
+    await invoke('open_system_settings');
+  } catch (e) {
+    console.error('Failed to open system settings:', e);
+    // 如果命令失败，尝试用浏览器打开设置页面
+    window.open('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles', '_blank');
   }
 };
 
@@ -1034,8 +1116,65 @@ const buildFileTreeRecursive = async (
   return root;
 };
 
-const loadFileTree = async (path: string) => {
+// 获取缓存的文件树
+const getCachedFileTree = (path: string): { tree: FileNode[]; changes: GitStatus[] } | null => {
+  const cached = fileTreeCache.value.get(path);
+  if (!cached) return null;
+
+  const now = Date.now();
+  if (now - cached.timestamp > CACHE_MAX_AGE) {
+    // 缓存过期，删除缓存
+    fileTreeCache.value.delete(path);
+    return null;
+  }
+
+  console.log(`Using cached file tree for: ${path}`);
+  return { tree: cached.tree, changes: cached.changes };
+};
+
+// 设置缓存的文件树
+const setCachedFileTree = (path: string, tree: FileNode[], changes: GitStatus[]) => {
+  fileTreeCache.value.set(path, {
+    tree: JSON.parse(JSON.stringify(tree)), // 深拷贝避免引用问题
+    changes: [...changes],
+    timestamp: Date.now()
+  });
+  console.log(`Cached file tree for: ${path}`);
+};
+
+// 清除指定项目的缓存
+const clearFileTreeCache = (path?: string) => {
+  if (path) {
+    fileTreeCache.value.delete(path);
+    console.log(`Cleared cache for: ${path}`);
+  } else {
+    fileTreeCache.value.clear();
+    console.log('Cleared all file tree caches');
+  }
+};
+
+const loadFileTree = async (path: string, forceRefresh = false) => {
   try {
+    // 先尝试使用缓存（如果不是强制刷新）
+    if (!forceRefresh) {
+      const cached = getCachedFileTree(path);
+      if (cached) {
+        fileTree.value = JSON.parse(JSON.stringify(cached.tree)); // 深拷贝避免引用问题
+        gitChanges.value = [...cached.changes];
+
+        // 如果有已删除的文件且用户选择显示，则添加到文件树
+        if (showDeletedFiles.value) {
+          const deletedChanges = cached.changes.filter((c: GitStatus) => c.status === 'Deleted');
+          for (const deleted of deletedChanges) {
+            addDeletedFileToTree(deleted.path);
+          }
+        }
+        return;
+      }
+    }
+
+    // 缓存未命中或强制刷新，重新加载
+    console.log(`Loading file tree from disk: ${path}`);
     const entries = await invoke<any[]>('read_directory', { path });
 
     let changes: GitStatus[] = [];
@@ -1057,6 +1196,9 @@ const loadFileTree = async (path: string) => {
         addDeletedFileToTree(deleted.path);
       }
     }
+
+    // 保存到缓存
+    setCachedFileTree(path, fileTree.value, changes);
   } catch (e) {
     console.error('Failed to load file tree:', e);
     alert('加载文件树失败: ' + e);
@@ -1147,9 +1289,26 @@ const onPluginsChanged = () => {
   }
 };
 
+// 处理刷新按钮点击 - 按住 Shift 键点击可强制刷新
+const handleRefresh = (event?: MouseEvent) => {
+  const forceReload = event?.shiftKey === true;
+  if (forceReload) {
+    console.log('Shift+Refresh: Force reloading file tree...');
+  }
+  refresh(forceReload);
+};
+
 // 轻量级刷新 - 只更新Git状态，不重建文件树
-const refresh = async () => {
+const refresh = async (forceReload = false) => {
   if (!currentPath.value) return;
+
+  // 如果是强制刷新，清除缓存并重新加载文件树
+  if (forceReload) {
+    console.log('Force refreshing file tree...');
+    clearFileTreeCache(currentPath.value);
+    await loadFileTree(currentPath.value, true);
+    return;
+  }
 
   try {
     // 只获取Git状态变化，不重建整个文件树
@@ -1839,5 +1998,127 @@ const doTextCompare = async () => {
   flex: 1;
   display: flex;
   overflow: hidden;
+}
+
+/* 权限提示弹窗样式 */
+.permission-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.permission-dialog {
+  background-color: var(--bg-primary);
+  border-radius: 8px;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.3);
+  width: 90%;
+  max-width: 500px;
+  max-height: 90vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.permission-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 16px 20px;
+  border-bottom: 1px solid var(--border-color);
+}
+
+.permission-header h3 {
+  margin: 0;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.permission-header .close-btn {
+  background: none;
+  border: none;
+  font-size: 24px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 0;
+  width: 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+
+.permission-header .close-btn:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
+}
+
+.permission-content {
+  padding: 20px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.permission-content p {
+  margin: 0 0 12px 0;
+  color: var(--text-primary);
+  line-height: 1.6;
+}
+
+.permission-content ol {
+  margin: 12px 0;
+  padding-left: 24px;
+  color: var(--text-primary);
+  line-height: 1.8;
+}
+
+.permission-content li {
+  margin-bottom: 8px;
+}
+
+.permission-actions {
+  display: flex;
+  gap: 12px;
+  padding: 16px 20px;
+  border-top: 1px solid var(--border-color);
+  justify-content: flex-end;
+}
+
+.permission-actions .btn {
+  padding: 8px 16px;
+  border-radius: 6px;
+  border: 1px solid transparent;
+  cursor: pointer;
+  font-size: 14px;
+  transition: all 0.2s;
+}
+
+.permission-actions .btn-primary {
+  background-color: var(--accent-color);
+  color: white;
+  border-color: var(--accent-color);
+}
+
+.permission-actions .btn-primary:hover {
+  opacity: 0.9;
+}
+
+.permission-actions .btn-secondary {
+  background-color: transparent;
+  color: var(--text-secondary);
+  border-color: var(--border-color);
+}
+
+.permission-actions .btn-secondary:hover {
+  background-color: var(--bg-hover);
+  color: var(--text-primary);
 }
 </style>

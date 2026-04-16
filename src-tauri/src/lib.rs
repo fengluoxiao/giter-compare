@@ -980,6 +980,27 @@ fn remove_plugin(plugin_id: String, app_handle: tauri::AppHandle) -> Result<(), 
     Ok(())
 }
 
+// 打开系统设置（完全磁盘访问权限页面）
+#[tauri::command]
+fn open_system_settings() -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        Command::new("open")
+            .arg("x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles")
+            .spawn()
+            .map_err(|e| format!("Failed to open system settings: {}", e))?;
+    }
+    
+    #[cfg(not(target_os = "macos"))]
+    {
+        // Windows/Linux 可以添加相应的实现
+        return Err("This feature is only available on macOS".to_string());
+    }
+    
+    Ok(())
+}
+
 pub fn run() {
     let file_watcher = Arc::new(Mutex::new(FileWatcher::new()));
     
@@ -1009,7 +1030,8 @@ pub fn run() {
             remove_dir,
             import_vscode_plugin,
             get_installed_plugins,
-            remove_plugin
+            remove_plugin,
+            open_system_settings
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
