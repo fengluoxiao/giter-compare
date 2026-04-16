@@ -892,6 +892,11 @@ const removeProject = (projectId: string) => {
 const switchProject = async (project: Project) => {
   currentProjectId.value = project.id;
   currentPath.value = project.path;
+  
+  // 清除更改列表，避免显示上一个项目的更改
+  stagedFiles.value = [];
+  selectedStagedPath.value = '';
+  
   await loadFileTree(project.path);
   await invoke('start_file_watcher', { repoPath: project.path });
 };
