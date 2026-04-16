@@ -151,12 +151,18 @@ const loadWorkspace = (workspace: Workspace) => {
 
 // 删除工作区
 const deleteWorkspace = (id: string) => {
-  const index = workspaces.value.findIndex(w => w.id === id);
-  if (index > -1) {
-    workspaces.value.splice(index, 1);
-    saveWorkspaces();
-    if (selectedWorkspaceId.value === id) {
-      selectedWorkspaceId.value = '';
+  const workspace = workspaces.value.find(w => w.id === id);
+  if (!workspace) return;
+  
+  // 确认删除
+  if (confirm(`确定要删除工作区 "${workspace.name}" 吗?`)) {
+    const index = workspaces.value.findIndex(w => w.id === id);
+    if (index > -1) {
+      workspaces.value.splice(index, 1);
+      saveWorkspaces();
+      if (selectedWorkspaceId.value === id) {
+        selectedWorkspaceId.value = '';
+      }
     }
   }
 };
