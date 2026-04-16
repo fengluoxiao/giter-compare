@@ -12,6 +12,16 @@
             <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
           </svg>
         </button>
+        <button class="btn btn-icon btn-export" @click="$emit('export-projects')" title="导出项目列表">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+            <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+          </svg>
+        </button>
+        <button class="btn btn-icon btn-import" @click="$emit('import-projects')" title="导入项目列表">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+            <path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/>
+          </svg>
+        </button>
         <button
           class="btn btn-icon btn-collapse"
           @click="$emit('toggle-collapse')"
@@ -80,6 +90,8 @@ defineEmits<{
   'switch-project': [project: Project];
   'remove-project': [projectId: string];
   'start-resize': [event: MouseEvent];
+  'export-projects': [];
+  'import-projects': [];
 }>();
 
 // 从路径获取文件夹名称
@@ -201,5 +213,15 @@ const getFolderName = (path: string): string => {
   text-align: center;
   color: var(--text-secondary);
   font-size: 12px;
+}
+
+.btn-export,
+.btn-import {
+  color: var(--text-secondary);
+}
+
+.btn-export:hover,
+.btn-import:hover {
+  color: var(--accent-color);
 }
 </style>

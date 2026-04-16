@@ -40,6 +40,8 @@
         @switch-project="switchProject"
         @remove-project="removeProject"
         @start-resize="startResizeProjectSidebar"
+        @export-projects="exportProjects"
+        @import-projects="importProjects"
       />
 
       <!-- 中间文件树 -->
@@ -745,6 +747,79 @@ const switchProject = async (project: Project) => {
 
 const saveProjects = () => {
   localStorage.setItem('giter-projects', JSON.stringify(projects.value));
+};
+
+// 导出项目列表为 JSON 文件
+const exportProjects = async () => {
+  try {
+    const { save } = await import('@tauri-apps/plugin-dialog');
+    const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+
+    const filePath = await save({
+      filters: [
+        { name: 'JSON', extensions: ['json'] }
+      ],
+      defaultPath: 'giter-projects.json'
+    });
+
+    if (filePath) {
+      const exportData = {
+        version: '1.0',
+        exportDate: new Date().toISOString(),
+        projects: projects.value
+      };
+      await writeTextFile(filePath, JSON.stringify(exportData, null, 2));
+      alert('项目列表导出成功！');
+    }
+  } catch (e) {
+    console.error('Failed to export projects:', e);
+    alert('导出失败: ' + e);
+  }
+};
+
+// 从 JSON 文件导入项目列表
+const importProjects = async () => {
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    const { readTextFile } = await import('@tauri-apps/plugin-fs');
+
+    const selected = await open({
+      filters: [
+        { name: 'JSON', extensions: ['json'] }
+      ],
+      multiple: false
+    });
+
+    if (selected && typeof selected === 'string') {
+      const content = await readTextFile(selected);
+      const importData = JSON.parse(content);
+
+      if (importData.projects && Array.isArray(importData.projects)) {
+        // 合并导入的项目，避免重复
+        const existingPaths = new Set(projects.value.map(p => p.path));
+        let addedCount = 0;
+
+        for (const project of importData.projects) {
+          if (!existingPaths.has(project.path)) {
+            projects.value.push({
+              id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+              name: project.name,
+              path: project.path
+            });
+            addedCount++;
+          }
+        }
+
+        saveProjects();
+        alert(`成功导入 ${addedCount} 个项目！`);
+      } else {
+        alert('无效的项目文件格式');
+      }
+    }
+  } catch (e) {
+    console.error('Failed to import projects:', e);
+    alert('导入失败: ' + e);
+  }
 };
 
 const loadProjects = () => {
