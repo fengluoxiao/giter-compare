@@ -136,15 +136,21 @@ const saveWorkspace = () => {
 };
 
 // 导入当前项目列表
-const saveCurrentWorkspace = () => {
+const saveCurrentWorkspace = async () => {
   const now = new Date();
   const dateStr = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
-  const name = prompt(`当前有 ${props.currentProjects.length} 个项目\n\n请输入工作区名称:`, `工作区 ${dateStr}`);
+  const defaultName = `工作区 ${dateStr}`;
   
-  if (name && name.trim()) {
-    workspaceName.value = name.trim();
-    saveWorkspace();
-  }
+  // 使用简单的输入方式：直接填充到输入框
+  workspaceName.value = defaultName;
+  // 聚焦输入框
+  setTimeout(() => {
+    const input = document.querySelector('.workspace-input') as HTMLInputElement;
+    if (input) {
+      input.focus();
+      input.select();
+    }
+  }, 100);
 };
 
 // 加载工作区
@@ -158,15 +164,13 @@ const deleteWorkspace = (id: string) => {
   const workspace = workspaces.value.find(w => w.id === id);
   if (!workspace) return;
   
-  // 确认删除
-  if (confirm(`确定要删除工作区 "${workspace.name}" 吗?`)) {
-    const index = workspaces.value.findIndex(w => w.id === id);
-    if (index > -1) {
-      workspaces.value.splice(index, 1);
-      saveWorkspaces();
-      if (selectedWorkspaceId.value === id) {
-        selectedWorkspaceId.value = '';
-      }
+  // 直接删除，不使用 confirm
+  const index = workspaces.value.findIndex(w => w.id === id);
+  if (index > -1) {
+    workspaces.value.splice(index, 1);
+    saveWorkspaces();
+    if (selectedWorkspaceId.value === id) {
+      selectedWorkspaceId.value = '';
     }
   }
 };
@@ -196,21 +200,16 @@ const importFromFolder = async () => {
         };
       });
 
-      // 弹出输入框让用户输入工作区名称
-      const name = prompt(`已选择 ${newProjects.length} 个项目\n\n请输入工作区名称:`, `工作区 ${new Date().toLocaleDateString()}`);
-      
-      if (name && name.trim()) {
-        // 创建新工作区
-        const workspace: Workspace = {
-          id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-          name: name.trim(),
-          projects: newProjects,
-          createdAt: new Date().toISOString()
-        };
+      // 直接使用默认名称创建工作区
+      const workspace: Workspace = {
+        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+        name: `导入的工作区 ${new Date().toLocaleDateString()}`,
+        projects: newProjects,
+        createdAt: new Date().toISOString()
+      };
 
-        workspaces.value.unshift(workspace);
-        saveWorkspaces();
-      }
+      workspaces.value.unshift(workspace);
+      saveWorkspaces();
     }
   } catch (e) {
     console.error('Failed to import from folder:', e);
