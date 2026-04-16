@@ -799,6 +799,10 @@ const exportProjects = async () => {
     }
   } catch (e: any) {
     console.error('Failed to export projects:', e);
+    // 导出成功但用户取消，不显示错误
+    if (e.toString().includes('cancelled') || e.toString().includes('Canceled')) {
+      return;
+    }
     const errorMsg = e.toString();
     if (errorMsg.includes('Operation not permitted') || errorMsg.includes('os error 1')) {
       // 显示权限提示
