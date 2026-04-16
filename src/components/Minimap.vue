@@ -74,7 +74,7 @@ const mergedLines = computed(() => {
 });
 
 // 将多行合并为一个像素行，实现缩放效果
-const MINIMAP_LINE_HEIGHT = 2; // 每行像素高度
+const MINIMAP_LINE_HEIGHT = 1; // 每行像素高度（最小 1px）
 
 const scaledLines = computed(() => {
   const totalLines = mergedLines.value.length;
@@ -82,7 +82,11 @@ const scaledLines = computed(() => {
 
   // 根据容器高度计算需要多少像素行
   const minimapHeight = props.containerHeight || 200;
-  const pixelRows = Math.ceil(minimapHeight / MINIMAP_LINE_HEIGHT);
+  const maxPixelRows = Math.ceil(minimapHeight / MINIMAP_LINE_HEIGHT);
+  
+  // 如果行数少于最大像素行数，每行都用 1px 显示
+  // 否则需要压缩，多行合并为一个像素行
+  const pixelRows = Math.min(totalLines, maxPixelRows);
   const linesPerPixel = totalLines / pixelRows;
 
   const result: DiffLine[] = [];
