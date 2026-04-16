@@ -797,9 +797,19 @@ const exportProjects = async () => {
       await writeTextFile(filePath, JSON.stringify(exportData, null, 2));
       alert('项目列表导出成功！');
     }
-  } catch (e) {
+  } catch (e: any) {
     console.error('Failed to export projects:', e);
-    alert('导出失败: ' + e);
+    const errorMsg = e.toString();
+    if (errorMsg.includes('Operation not permitted') || errorMsg.includes('os error 1')) {
+      // 显示权限提示
+      const goToSettings = confirm('导出失败：需要磁盘访问权限。\n\n点击"确定"查看如何设置权限，点击"取消"稍后再试。');
+      if (goToSettings) {
+        // 打开工作区管理弹窗，里面有权限设置说明
+        showWorkspaceManager.value = true;
+      }
+    } else {
+      alert('导出失败: ' + e);
+    }
   }
 };
 

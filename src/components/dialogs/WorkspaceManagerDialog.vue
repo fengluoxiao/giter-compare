@@ -1,5 +1,23 @@
 <template>
   <DialogBase :open="open" title="工作区管理" @close="$emit('close')">
+    <!-- 权限提示弹窗 -->
+    <div v-if="showPermissionDialog" class="permission-overlay" @click.self="showPermissionDialog = false">
+      <div class="permission-dialog">
+        <h3>需要磁盘访问权限</h3>
+        <p>导出项目列表需要授予应用磁盘访问权限。</p>
+        <p>请按照以下步骤操作：</p>
+        <ol>
+          <li>打开 <strong>系统设置</strong> → <strong>隐私与安全性</strong> → <strong>完全磁盘访问权限</strong></li>
+          <li>点击 <strong>+</strong> 按钮</li>
+          <li>找到并添加 <strong>git-compare-tool</strong> 应用</li>
+          <li>重启应用</li>
+        </ol>
+        <div class="permission-actions">
+          <button class="btn btn-primary" @click="openSystemSettings">打开系统设置</button>
+          <button class="btn btn-secondary" @click="showPermissionDialog = false">稍后再说</button>
+        </div>
+      </div>
+    </div>
     <div class="workspace-manager">
       <!-- 导入项目 -->
       <div class="section import-section">
@@ -125,6 +143,7 @@ watch(() => props.currentProjects, (newProjects) => {
 const workspaceName = ref('');
 const workspaces = ref<Workspace[]>([]);
 const selectedWorkspaceId = ref<string>('');
+const showPermissionDialog = ref(false);
 
 const WORKSPACE_FILE_NAME = 'workspaces.json';
 
@@ -274,6 +293,16 @@ const removeCurrentProject = (projectId: string) => {
   const index = localProjects.value.findIndex(p => p.id === projectId);
   if (index > -1) {
     localProjects.value.splice(index, 1);
+  }
+};
+
+// 打开系统设置
+const openSystemSettings = async () => {
+  try {
+    const { open } = await import('@tauri-apps/plugin-shell');
+    await open('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles');
+  } catch (e) {
+    console.error('Failed to open system settings:', e);
   }
 };
 
@@ -539,5 +568,60 @@ onMounted(async () => {
 .btn-delete:hover {
   background-color: var(--error-color-light, rgba(239, 68, 68, 0.1));
   border-color: var(--error-color, #ef4444);
+}
+
+/* 权限提示弹窗样式 */
+.permission-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+}
+
+.permission-dialog {
+  background-color: var(--bg-primary);
+  border-radius: 12px;
+  padding: 24px;
+  max-width: 500px;
+  width: 90%;
+  box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+}
+
+.permission-dialog h3 {
+  margin: 0 0 16px 0;
+  font-size: 18px;
+  color: var(--text-primary);
+}
+
+.permission-dialog p {
+  margin: 8px 0;
+  font-size: 14px;
+  color: var(--text-secondary);
+  line-height: 1.5;
+}
+
+.permission-dialog ol {
+  margin: 16px 0;
+  padding-left: 20px;
+  color: var(--text-primary);
+  font-size: 14px;
+  line-height: 1.8;
+}
+
+.permission-dialog li {
+  margin: 8px 0;
+}
+
+.permission-actions {
+  display: flex;
+  gap: 12px;
+  margin-top: 20px;
+  justify-content: flex-end;
 }
 </style>
