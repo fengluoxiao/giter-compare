@@ -33,6 +33,7 @@
       :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
     >
       <div class="context-menu-item" @click="closeContextMenuTab">关闭</div>
+      <div class="context-menu-item" @click="closeAllTabs">关闭所有</div>
       <div class="context-menu-item" @click="closeOtherTabs">关闭其他</div>
       <div class="context-menu-item" @click="closeTabsToRight">关闭右侧标签</div>
     </div>
@@ -164,6 +165,11 @@ const closeOtherTabs = () => {
   hideContextMenu();
 };
 
+const closeAllTabs = () => {
+  emit('close-all');
+  hideContextMenu();
+};
+
 const closeTabsToRight = () => {
   emit('close-to-right', contextMenu.tabId);
   hideContextMenu();
@@ -227,6 +233,9 @@ window.addEventListener('click', hideContextMenu);
 .tab-icon {
   font-size: 12px;
   flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  line-height: 1;
 }
 
 .tab-name {
@@ -236,6 +245,7 @@ window.addEventListener('click', hideContextMenu);
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  line-height: 1;
 }
 
 .tab-modified-indicator {
