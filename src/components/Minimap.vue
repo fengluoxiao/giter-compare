@@ -7,19 +7,13 @@
     @mouseup="handleMouseUp"
     @mouseleave="handleMouseUp"
   >
-    <div
-      v-for="(line, index) in scaledLines"
-      :key="index"
-      class="minimap-line"
-      :class="line.changeType"
-      :style="{ height: scaledLineHeight + 'px' }"
-    ></div>
+    <canvas ref="canvasRef" class="minimap-canvas"></canvas>
     <div class="minimap-viewport" :style="viewportStyle"></div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue';
+import { computed, ref, watch, onMounted, onUnmounted } from 'vue';
 
 interface DiffLine {
   lineNum: number;
@@ -37,13 +31,14 @@ const props = defineProps<{
 }>();
 
 const emit = defineEmits<{
-  jump: [lineIndex: number];
+  jump: [scrollTop: number];
 }>();
 
 const minimapRef = ref<HTMLElement | null>(null);
+const canvasRef = ref<HTMLCanvasElement | null>(null);
 const isDragging = ref(false);
 
-// 合并左右两侧的 lines，优先显示有变更的类型
+// 合并左右两侧的 lines
 const mergedLines = computed(() => {
   const maxLength = Math.max(props.leftLines.length, props.rightLines.length);
   const result: DiffLine[] = [];
@@ -52,7 +47,6 @@ const mergedLines = computed(() => {
     const leftLine = props.leftLines[i];
     const rightLine = props.rightLines[i];
 
-    // 优先顺序：added > removed > changed > unchanged > empty
     if (leftLine?.changeType === 'added') {
       result.push(leftLine);
     } else if (rightLine?.changeType === 'removed') {
@@ -73,61 +67,84 @@ const mergedLines = computed(() => {
   return result;
 });
 
-// 将多行合并为一个像素行，实现缩放效果
-const MINIMAP_LINE_HEIGHT = 1; // 每行像素高度（最小 1px）
+// 颜色定义
+const COLORS = {
+  background: { r: 240, g: 240, b: 240 },
+  unchanged: { r: 212, g: 212, b: 212 },
+  added: { r: 76, g: 175, b: 80 },
+  removed: { r: 244, g: 67, b: 54 },
+  changed: { r: 33, g: 150, b: 243 }
+};
 
-const scaledLines = computed(() => {
-  const totalLines = mergedLines.value.length;
-  if (totalLines === 0) return [];
+// 使用 ImageData 直接操作像素渲染
+const render = () => {
+  const canvas = canvasRef.value;
+  if (!canvas || !minimapRef.value) return;
 
-  // 根据容器高度计算需要多少像素行
-  const minimapHeight = props.containerHeight || 200;
-  const maxPixelRows = Math.ceil(minimapHeight / MINIMAP_LINE_HEIGHT);
-  
-  // 如果行数少于最大像素行数，每行都用 1px 显示
-  // 否则需要压缩，多行合并为一个像素行
-  const pixelRows = Math.min(totalLines, maxPixelRows);
-  const linesPerPixel = totalLines / pixelRows;
+  const ctx = canvas.getContext('2d');
+  if (!ctx) return;
 
-  const result: DiffLine[] = [];
+  const lines = mergedLines.value;
+  const totalLines = lines.length;
 
-  for (let i = 0; i < pixelRows; i++) {
-    const startLine = Math.floor(i * linesPerPixel);
-    const endLine = Math.floor((i + 1) * linesPerPixel);
+  if (totalLines === 0) return;
 
-    // 找出这个像素范围内优先级最高的变更类型
-    let changeType = 'unchanged';
+  // 设置 canvas 尺寸
+  const rect = minimapRef.value.getBoundingClientRect();
+  canvas.width = rect.width;
+  canvas.height = rect.height;
 
-    for (let j = startLine; j < endLine && j < totalLines; j++) {
-      const line = mergedLines.value[j];
-      if (!line) continue;
+  // 创建 ImageData
+  const imageData = ctx.createImageData(canvas.width, canvas.height);
+  const data = imageData.data;
 
-      // 优先级：added > removed > changed > unchanged > empty
-      if (line.changeType === 'added') {
-        changeType = 'added';
-        break; // 最高优先级，直接跳出
-      } else if (line.changeType === 'removed' && changeType !== 'added') {
-        changeType = 'removed';
-      } else if (line.changeType === 'changed' && changeType !== 'added' && changeType !== 'removed') {
-        changeType = 'changed';
-      } else if (line.changeType === 'empty' && changeType === 'unchanged') {
-        changeType = 'empty';
+  // 计算每行代码对应的像素高度
+  const lineHeight = canvas.height / totalLines;
+
+  // 填充每个像素
+  for (let y = 0; y < canvas.height; y++) {
+    // 计算这个像素对应的代码行
+    const lineIndex = Math.floor(y / lineHeight);
+    const line = lines[Math.min(lineIndex, totalLines - 1)];
+
+    // 确定颜色 - 只要不是 unchanged 就是有变更
+    let color = COLORS.unchanged;
+    if (line) {
+      if (line.changeType === 'added' || line.changeType === 'empty') {
+        // empty 表示对应侧没有这行，也属于变更
+        color = COLORS.added;
+      } else if (line.changeType === 'removed') {
+        color = COLORS.removed;
+      } else if (line.changeType === 'changed') {
+        color = COLORS.changed;
       }
     }
 
-    result.push({
-      lineNum: i,
-      content: '',
-      changeType,
-      isDiff: changeType !== 'unchanged' && changeType !== 'empty'
-    });
+    // 填充这一行的所有像素
+    for (let x = 0; x < canvas.width; x++) {
+      const idx = (y * canvas.width + x) * 4;
+      data[idx] = color.r;
+      data[idx + 1] = color.g;
+      data[idx + 2] = color.b;
+      data[idx + 3] = 255;
+    }
   }
 
-  return result;
+  // 将 ImageData 绘制到 canvas
+  ctx.putImageData(imageData, 0, 0);
+};
+
+// 监听数据变化
+watch(() => props.leftLines, render, { deep: true });
+watch(() => props.rightLines, render, { deep: true });
+
+onMounted(() => {
+  render();
+  window.addEventListener('resize', render);
 });
 
-const scaledLineHeight = computed(() => {
-  return MINIMAP_LINE_HEIGHT;
+onUnmounted(() => {
+  window.removeEventListener('resize', render);
 });
 
 const viewportStyle = computed(() => {
@@ -136,27 +153,25 @@ const viewportStyle = computed(() => {
     return { display: 'none' };
   }
 
-  // 计算可见行数
-  const estimatedLineHeight = 20; // 代码编辑器中每行大约20px
-  const visibleLines = Math.ceil(props.containerHeight / estimatedLineHeight);
+  // 使用与代码区域一致的行高
+  const LINE_HEIGHT = 24;
+  const visibleLines = Math.ceil(props.containerHeight / LINE_HEIGHT);
 
   if (totalLines <= visibleLines) {
     return { display: 'none' };
   }
 
-  // 计算滚动比例
-  const currentLine = Math.floor(props.scrollTop / estimatedLineHeight);
-  const scrollRatio = Math.min(currentLine / totalLines, 1);
-  const viewportRatio = Math.min(visibleLines / totalLines, 1);
-
-  // 在缩放的 minimap 上显示 viewport
-  const minimapHeight = scaledLines.value.length * MINIMAP_LINE_HEIGHT;
-  const top = scrollRatio * minimapHeight;
-  const height = Math.max(viewportRatio * minimapHeight, 10);
+  // 使用实际的 scrollTop 和行高计算当前行
+  const currentLine = Math.floor(props.scrollTop / LINE_HEIGHT);
+  
+  // 使用像素比例而不是行数比例，更精确
+  const totalHeight = totalLines * LINE_HEIGHT;
+  const scrollRatio = Math.min(props.scrollTop / totalHeight, 1);
+  const viewportRatio = Math.min(props.containerHeight / totalHeight, 1);
 
   return {
-    top: `${top}px`,
-    height: `${height}px`,
+    top: `${scrollRatio * 100}%`,
+    height: `${Math.max(viewportRatio * 100, 5)}%`,
   };
 });
 
@@ -165,15 +180,14 @@ const jumpToPosition = (clientY: number) => {
 
   const rect = minimapRef.value.getBoundingClientRect();
   const clickY = clientY - rect.top;
-  const pixelRow = Math.floor(clickY / MINIMAP_LINE_HEIGHT);
+  const ratio = clickY / rect.height;
+  const lineIndex = Math.floor(ratio * mergedLines.value.length);
 
-  // 将像素行转换回实际行号
-  const totalLines = mergedLines.value.length;
-  const pixelRows = scaledLines.value.length;
-  const linesPerPixel = totalLines / pixelRows;
-  const lineIndex = Math.floor(pixelRow * linesPerPixel);
+  // 使用固定的行高计算实际的 scrollTop
+  const LINE_HEIGHT = 24;
+  const scrollTop = lineIndex * LINE_HEIGHT;
 
-  emit('jump', Math.max(0, Math.min(lineIndex, totalLines - 1)));
+  emit('jump', scrollTop);
 };
 
 const handleMouseDown = (e: MouseEvent) => {
@@ -201,33 +215,12 @@ const handleMouseUp = () => {
   overflow: hidden;
   cursor: pointer;
   flex-shrink: 0;
-  display: flex;
-  flex-direction: column;
 }
 
-.minimap-line {
+.minimap-canvas {
   width: 100%;
-  flex-shrink: 0;
-}
-
-.minimap-line.unchanged {
-  background-color: rgba(128, 128, 128, 0.15);
-}
-
-.minimap-line.added {
-  background-color: rgba(76, 175, 80, 0.9);
-}
-
-.minimap-line.removed {
-  background-color: rgba(244, 67, 54, 0.9);
-}
-
-.minimap-line.changed {
-  background-color: rgba(33, 150, 243, 0.9);
-}
-
-.minimap-line.empty {
-  background-color: rgba(128, 128, 128, 0.1);
+  height: 100%;
+  display: block;
 }
 
 .minimap-viewport {

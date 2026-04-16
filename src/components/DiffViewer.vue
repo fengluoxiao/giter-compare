@@ -146,20 +146,16 @@ const syncScroll = (source: 'left' | 'right') => {
 };
 
 // Minimap 跳转处理
-const handleMinimapJump = (lineIndex: number) => {
-  if (!leftCodeContent.value || props.leftLines.length === 0) return;
+const handleMinimapJump = (scrollTop: number) => {
+  if (!leftCodeContent.value) return;
 
-  // 使用固定的行高 24px
-  const LINE_HEIGHT = 24;
-  const targetScrollTop = lineIndex * LINE_HEIGHT;
-
-  leftCodeContent.value.scrollTop = targetScrollTop;
+  leftCodeContent.value.scrollTop = scrollTop;
   if (rightCodeContent.value) {
-    rightCodeContent.value.scrollTop = targetScrollTop;
+    rightCodeContent.value.scrollTop = scrollTop;
   }
 
   // 更新 minimap 状态
-  leftScrollTop.value = targetScrollTop;
+  leftScrollTop.value = scrollTop;
 };
 
 // 监听线条变化，更新 minimap 尺寸
