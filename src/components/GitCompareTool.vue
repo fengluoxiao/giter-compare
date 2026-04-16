@@ -176,6 +176,7 @@ import { ref, onMounted, onUnmounted, computed, watch } from 'vue';
 import { open } from '@tauri-apps/plugin-dialog';
 import { invoke } from '@tauri-apps/api/core';
 import { listen } from '@tauri-apps/api/event';
+import { getCurrentWindow } from '@tauri-apps/api/window';
 import Toolbar from './Toolbar.vue';
 import ProjectSidebar from './ProjectSidebar.vue';
 import FileTreeSidebar from './FileTreeSidebar.vue';
@@ -361,6 +362,9 @@ onMounted(async () => {
   }
 
   loadWorkspaces();
+
+  // 设置初始窗口标题
+  getCurrentWindow().setTitle('Giter Compare');
 
   unlistenFileChange = await listen('file-changed', (event: any) => {
     if (currentPath.value) {
@@ -900,6 +904,19 @@ const switchProject = async (project: Project) => {
   await loadFileTree(project.path);
   await loadStagedFiles(); // 重新加载当前项目的更改列表
   await invoke('start_file_watcher', { repoPath: project.path });
+  
+  // 更新窗口标题
+  updateWindowTitle(project);
+};
+
+// 更新窗口标题
+const updateWindowTitle = (project: Project) => {
+  const projectName = project.name || project.path.split('/').pop() || 'Giter Compare';
+  const newTitle = `${projectName} - Giter Compare`;
+  console.log('Updating window title to:', newTitle);
+  const win = getCurrentWindow();
+  console.log('Window object:', win);
+  win.setTitle(newTitle);
 };
 
 // 保存工作区列表到 localStorage
