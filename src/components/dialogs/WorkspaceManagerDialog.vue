@@ -40,13 +40,13 @@
               <span class="workspace-date">{{ formatDate(workspace.createdAt) }}</span>
               <span class="workspace-count">{{ workspace.projects.length }} 个项目</span>
             </div>
-            <div class="workspace-actions" style="display: flex; gap: 8px;">
-              <button class="btn btn-icon" @click.stop="loadWorkspace(workspace)" title="加载" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-color); background: var(--bg-primary); border-radius: 4px; cursor: pointer;">
+            <div class="workspace-actions" style="display: flex !important; gap: 8px !important; visibility: visible !important;">
+              <button @click.stop="loadWorkspace(workspace)" title="加载" style="width: 32px !important; height: 32px !important; display: flex !important; align-items: center !important; justify-content: center !important; border: 1px solid #ccc !important; background: white !important; border-radius: 4px !important; cursor: pointer !important; visibility: visible !important; opacity: 1 !important;">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                   <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
                 </svg>
               </button>
-              <button class="btn btn-icon btn-delete" @click.stop="deleteWorkspace(workspace.id)" title="删除" style="width: 32px; height: 32px; display: flex; align-items: center; justify-content: center; border: 1px solid var(--border-color); background: var(--bg-primary); border-radius: 4px; cursor: pointer; color: #ef4444;">
+              <button @click.stop="deleteWorkspace(workspace.id)" title="删除" style="width: 32px !important; height: 32px !important; display: flex !important; align-items: center !important; justify-content: center !important; border: 1px solid #ccc !important; background: white !important; border-radius: 4px !important; cursor: pointer !important; color: #ef4444 !important; visibility: visible !important; opacity: 1 !important;">
                 <svg viewBox="0 0 24 24" width="16" height="16" fill="currentColor">
                   <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
                 </svg>
