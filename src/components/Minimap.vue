@@ -74,15 +74,15 @@ const mergedLines = computed(() => {
 });
 
 // 将多行合并为一个像素行，实现缩放效果
-const MINIMAP_HEIGHT = 200; // minimap 固定高度（像素）
 const MINIMAP_LINE_HEIGHT = 2; // 每行像素高度
 
 const scaledLines = computed(() => {
   const totalLines = mergedLines.value.length;
   if (totalLines === 0) return [];
 
-  // 计算需要多少像素行来表示整个文件
-  const pixelRows = Math.ceil(MINIMAP_HEIGHT / MINIMAP_LINE_HEIGHT);
+  // 根据容器高度计算需要多少像素行
+  const minimapHeight = props.containerHeight || 200;
+  const pixelRows = Math.ceil(minimapHeight / MINIMAP_LINE_HEIGHT);
   const linesPerPixel = totalLines / pixelRows;
 
   const result: DiffLine[] = [];
@@ -191,7 +191,6 @@ const handleMouseUp = () => {
 .minimap {
   width: 60px;
   height: 100%;
-  max-height: 200px;
   background-color: var(--bg-secondary);
   border-left: 1px solid var(--border-color);
   position: relative;
@@ -200,7 +199,6 @@ const handleMouseUp = () => {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
-  align-self: flex-start;
 }
 
 .minimap-line {
