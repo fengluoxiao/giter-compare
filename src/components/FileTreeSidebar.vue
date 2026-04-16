@@ -58,19 +58,31 @@
           <span class="toggle-text">显示已删除文件</span>
         </label>
       </div>
+      <!-- 搜索框 -->
+      <div v-show="!isCollapsed" class="search-box">
+        <input
+          v-model="searchQuery"
+          type="text"
+          class="search-input"
+          placeholder="搜索文件..."
+        />
+        <svg v-if="searchQuery" class="search-clear" viewBox="0 0 24 24" width="16" height="16" fill="currentColor" @click="searchQuery = ''">
+          <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+        </svg>
+      </div>
     </div>
     <div v-show="!isCollapsed" class="file-list">
       <!-- 工作区：显示文件树 -->
       <FileTree
         v-if="viewMode === 'working' && fileTree.length > 0"
-        :nodes="fileTree"
+        :nodes="filteredFileTree"
         @select="$emit('select-file', $event)"
         @toggle="$emit('toggle-directory', $event)"
       />
       <!-- 暂存区：显示更改的文件列表 -->
       <StagedFileList
         v-else-if="viewMode === 'staged'"
-        :staged-files="stagedFiles"
+        :staged-files="filteredStagedFiles"
         :selected-path="selectedStagedPath"
         @select="$emit('select-staged-file', $event)"
       />
@@ -88,7 +100,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, ref } from 'vue';
 import FileTree from './FileTree.vue';
 import StagedFileList from './StagedFileList.vue';
 
@@ -134,6 +146,51 @@ defineEmits<{
   'select-staged-file': [path: string];
   'start-resize': [event: MouseEvent];
 }>();
+
+// 搜索功能
+const searchQuery = ref('');
+
+// 检查文件是否匹配搜索
+const matchesSearch = (name: string, path: string): boolean => {
+  if (!searchQuery.value) return true;
+  const query = searchQuery.value.toLowerCase();
+  return name.toLowerCase().includes(query) || path.toLowerCase().includes(query);
+};
+
+// 递归过滤文件树
+const filterFileTree = (nodes: FileNode[]): FileNode[] => {
+  if (!searchQuery.value) return nodes;
+  
+  return nodes
+    .map(node => {
+      if (node.type === 'directory') {
+        const filteredChildren = filterFileTree(node.children);
+        // 如果子节点有匹配的，或者文件夹本身匹配，则包含该文件夹
+        if (filteredChildren.length > 0 || matchesSearch(node.name, node.path)) {
+          return {
+            ...node,
+            children: filteredChildren,
+            expanded: true // 搜索时自动展开匹配的文件夹
+          };
+        }
+        return null;
+      } else {
+        // 文件节点
+        return matchesSearch(node.name, node.path) ? node : null;
+      }
+    })
+    .filter(node => node !== null) as FileNode[];
+};
+
+// 过滤更改列表
+const filterStagedFiles = (files: StagedFile[]): StagedFile[] => {
+  if (!searchQuery.value) return files;
+  return files.filter(file => matchesSearch(file.name, file.path));
+};
+
+// 计算属性
+const filteredFileTree = computed(() => filterFileTree(props.fileTree));
+const filteredStagedFiles = computed(() => filterStagedFiles(props.stagedFiles || []));
 
 // 检查是否有已删除的文件（基于 Git 变更数据，而不是文件树）
 const hasDeletedFiles = computed(() => {
@@ -249,6 +306,49 @@ const hasDeletedFiles = computed(() => {
 
 .toggle-text {
   user-select: none;
+}
+
+.search-box {
+  position: relative;
+  margin-top: 8px;
+}
+
+.search-input {
+  width: 100%;
+  padding: 6px 32px 6px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--bg-primary);
+  color: var(--text-primary);
+  font-size: 12px;
+  outline: none;
+  transition: border-color 0.2s;
+  box-sizing: border-box;
+}
+
+.search-input:focus {
+  border-color: var(--accent-color);
+}
+
+.search-input::placeholder {
+  color: var(--text-secondary);
+}
+
+.search-clear {
+  position: absolute;
+  right: 8px;
+  top: 50%;
+  transform: translateY(-50%);
+  color: var(--text-secondary);
+  cursor: pointer;
+  padding: 2px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.search-clear:hover {
+  color: var(--text-primary);
 }
 
 .file-list {
