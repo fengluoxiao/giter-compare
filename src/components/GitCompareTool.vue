@@ -245,13 +245,11 @@ const isBinary = ref(false);
 const diffStats = ref<{ added: number; removed: number; changed: number } | null>(null);
 const gitChanges = ref<GitStatus[]>([]);
 
-// 文件树缓存 - 键为项目路径，值为文件树数据
+// 文件树缓存 - 键为项目路径，值为文件树数据（永久缓存，文件变更时自动刷新）
 const fileTreeCache = ref<Map<string, { tree: FileNode[]; changes: GitStatus[]; timestamp: number }>>(new Map());
-const CACHE_MAX_AGE = 5 * 60 * 1000; // 缓存有效期5分钟
 
-// Diff 缓存 - 键为"项目路径:文件路径"，值为 diff 结果
+// Diff 缓存 - 键为"项目路径:文件路径"，值为 diff 结果（永久缓存，文件变更时自动刷新）
 const diffCache = ref<Map<string, { leftLines: DiffLine[]; rightLines: DiffLine[]; isBinary: boolean; diffStats: any; timestamp: number }>>(new Map());
-const DIFF_CACHE_MAX_AGE = 2 * 60 * 1000; // Diff 缓存有效期2分钟
 
 // 暂存区状态
 const stagedFiles = ref<{ name: string; path: string; status?: string }[]>([]);
@@ -1162,13 +1160,6 @@ const getCachedFileTree = (path: string): { tree: FileNode[]; changes: GitStatus
   const cached = fileTreeCache.value.get(path);
   if (!cached) return null;
 
-  const now = Date.now();
-  if (now - cached.timestamp > CACHE_MAX_AGE) {
-    // 缓存过期，删除缓存
-    fileTreeCache.value.delete(path);
-    return null;
-  }
-
   console.log(`Using cached file tree for: ${path}`);
   return { tree: cached.tree, changes: cached.changes };
 };
@@ -1425,12 +1416,6 @@ const getDiffCacheKey = (projectPath: string, filePath: string) => `${projectPat
 const getDiffFromCache = (key: string): { leftLines: DiffLine[]; rightLines: DiffLine[]; isBinary: boolean; diffStats: any } | null => {
   const cached = diffCache.value.get(key);
   if (!cached) return null;
-
-  const now = Date.now();
-  if (now - cached.timestamp > DIFF_CACHE_MAX_AGE) {
-    diffCache.value.delete(key);
-    return null;
-  }
 
   console.log('Using cached diff for:', key);
   return {
