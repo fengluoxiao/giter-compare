@@ -128,6 +128,7 @@
       :current-projects="projects"
       @close="showWorkspaceManager = false"
       @load-workspace="onLoadWorkspace"
+      @remove-project="removeProject"
     />
   </div>
 </template>

@@ -12,6 +12,11 @@
             <div v-for="project in currentProjects" :key="project.id" class="project-item">
               <span class="project-name">{{ project.name }}</span>
               <span class="project-path">{{ project.path }}</span>
+              <button class="btn btn-icon btn-delete-project" @click.stop="removeCurrentProject(project.id)" title="从列表移除">
+                <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                  <path d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+                </svg>
+              </button>
             </div>
           </div>
         </div>
@@ -107,6 +112,7 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   loadWorkspace: [projects: Project[]];
+  removeProject: [projectId: string];
 }>();
 
 const workspaceName = ref('');
@@ -238,6 +244,11 @@ const formatDate = (dateStr: string): string => {
   return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
 };
 
+// 从当前项目列表中移除项目
+const removeCurrentProject = (projectId: string) => {
+  emit('removeProject', projectId);
+};
+
 onMounted(() => {
   loadWorkspaces();
 });
@@ -343,6 +354,28 @@ onMounted(() => {
   color: var(--text-secondary);
   word-break: break-all;
   flex: 1;
+}
+
+.btn-delete-project {
+  width: 24px;
+  height: 24px;
+  padding: 4px;
+  border: none;
+  background: transparent;
+  color: var(--text-secondary);
+  cursor: pointer;
+  border-radius: 4px;
+  opacity: 0;
+  transition: all 0.2s;
+}
+
+.project-item:hover .btn-delete-project {
+  opacity: 1;
+}
+
+.btn-delete-project:hover {
+  background-color: var(--error-color-light, rgba(239, 68, 68, 0.1));
+  color: var(--error-color, #ef4444);
 }
 
 .no-projects {
