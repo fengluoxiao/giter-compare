@@ -5,6 +5,18 @@
     :style="{ width: isCollapsed ? '40px' : width + 'px' }"
   >
     <div class="project-header">
+      <div class="workspace-selector" v-if="!isCollapsed">
+        <select v-model="currentWorkspaceId" @change="onWorkspaceChange">
+          <option v-for="ws in workspaces" :key="ws.id" :value="ws.id">
+            📁 {{ ws.name }}
+          </option>
+        </select>
+        <button class="btn btn-icon btn-add-workspace" @click="$emit('add-workspace')" title="新建工作区">
+          <svg viewBox="0 0 24 24" width="12" height="12" fill="currentColor">
+            <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
+          </svg>
+        </button>
+      </div>
       <h3 v-show="!isCollapsed">项目列表</h3>
       <div class="project-header-buttons">
         <button class="btn btn-icon btn-add" @click="$emit('add-project')" title="添加项目">
@@ -12,12 +24,12 @@
             <path d="M19 13h-6v6h-2v-6H5v-2h6V5h2v6h6v2z"/>
           </svg>
         </button>
-        <button class="btn btn-icon btn-export" @click="$emit('export-projects')" title="导出项目列表">
+        <button class="btn btn-icon btn-export" @click="$emit('export-projects')" title="导出当前工作区">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
             <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
           </svg>
         </button>
-        <button class="btn btn-icon btn-import" @click="$emit('import-projects')" title="导入项目列表">
+        <button class="btn btn-icon btn-import" @click="$emit('import-projects')" title="导入工作区">
           <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
             <path d="M9 16h6v-6h4l-7-7-7 7h4zm-4 2h14v2H5z"/>
           </svg>
@@ -77,22 +89,38 @@ interface Project {
   path: string;
 }
 
-defineProps<{
+interface Workspace {
+  id: string;
+  name: string;
+  projects: Project[];
+}
+
+const props = defineProps<{
+  workspaces: Workspace[];
+  currentWorkspaceId: string;
   projects: Project[];
   currentProjectId: string;
   isCollapsed: boolean;
   width: number;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   'add-project': [];
+  'add-workspace': [];
   'toggle-collapse': [];
   'switch-project': [project: Project];
   'remove-project': [projectId: string];
   'start-resize': [event: MouseEvent];
   'export-projects': [];
   'import-projects': [];
+  'switch-workspace': [workspaceId: string];
 }>();
+
+const currentWorkspaceId = defineModel<string>('currentWorkspaceId');
+
+const onWorkspaceChange = () => {
+  emit('switch-workspace', currentWorkspaceId.value);
+};
 
 // 从路径获取文件夹名称
 const getFolderName = (path: string): string => {
@@ -113,15 +141,59 @@ const getFolderName = (path: string): string => {
 
 .project-header {
   display: flex;
+  flex-direction: column;
+  gap: 8px;
   align-items: center;
-  justify-content: space-between;
   padding: 12px;
   border-bottom: 1px solid var(--border-color);
 }
 
-.project-header h3 {
-  font-size: 14px;
+.workspace-selector {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  width: 100%;
+}
+
+.workspace-selector select {
+  flex: 1;
+  padding: 6px 8px;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  background-color: var(--bg-primary);
   color: var(--text-primary);
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.workspace-selector select:focus {
+  outline: none;
+  border-color: var(--accent-color);
+}
+
+.btn-add-workspace {
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: transparent;
+  border: 1px solid var(--border-color);
+  border-radius: 4px;
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: all 0.2s;
+}
+
+.btn-add-workspace:hover {
+  background-color: var(--bg-hover);
+  color: var(--accent-color);
+  border-color: var(--accent-color);
+}
+
+.project-header-buttons {
+  display: flex;
+  gap: 4px;
 }
 
 .project-list {

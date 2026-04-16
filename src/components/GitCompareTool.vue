@@ -32,17 +32,21 @@
     <div class="main-container">
       <!-- 左侧项目列表 -->
       <ProjectSidebar
+        :workspaces="workspaces"
+        :current-workspace-id="currentWorkspaceId"
         :projects="projects"
         :current-project-id="currentProjectId"
         :is-collapsed="isProjectSidebarCollapsed"
         :width="projectSidebarWidth"
         @add-project="showAddProjectDialog"
+        @add-workspace="addWorkspace"
         @toggle-collapse="toggleProjectSidebar"
         @switch-project="switchProject"
         @remove-project="removeProject"
         @start-resize="startResizeProjectSidebar"
         @export-projects="exportProjects"
         @import-projects="importProjects"
+        @switch-workspace="switchWorkspace"
       />
 
       <!-- 中间文件树 -->
@@ -215,6 +219,18 @@ interface Project {
   path: string;
 }
 
+interface Workspace {
+  id: string;
+  name: string;
+  projects: Project[];
+}
+
+interface Workspace {
+  id: string;
+  name: string;
+  projects: Project[];
+}
+
 // 主题和视图状态
 const theme = ref('light');
 const viewMode = ref<'working' | 'staged'>('working');
@@ -259,8 +275,10 @@ const selectedStagedPath = ref<string>('');
 const tabs = ref<Tab[]>([]);
 const activeTabId = ref<string>('');
 
-// 多项目支持
-const projects = ref<Project[]>([]);
+// 多项目支持 - 使用工作区（文件夹）管理
+const workspaces = ref<Workspace[]>([]);
+const currentWorkspaceId = ref<string>('');
+const projects = ref<Project[]>([]); // 当前工作区的项目列表
 const currentProjectId = ref<string>('');
 const newProjectName = ref('');
 const newProjectPath = ref('');
@@ -801,7 +819,7 @@ const confirmAddProjects = async () => {
       projects.value.push(project);
     }
 
-    saveProjects();
+    saveWorkspaces();
 
     // 第二步：预加载所有新项目的文件树到缓存（在后台进行）
     console.log('Preloading file tree cache for', newProjects.length, 'projects...');
@@ -843,7 +861,7 @@ const removeProject = (projectId: string) => {
   const projectPath = projects.value[index].path;
 
   projects.value.splice(index, 1);
-  saveProjects();
+  saveWorkspaces();
 
   // 清理被删除项目的缓存
   clearFileTreeCache(projectPath);
@@ -864,8 +882,69 @@ const switchProject = async (project: Project) => {
   await invoke('start_file_watcher', { repoPath: project.path });
 };
 
-const saveProjects = () => {
-  localStorage.setItem('giter-projects', JSON.stringify(projects.value));
+// 保存工作区列表到 localStorage
+const saveWorkspaces = () => {
+  localStorage.setItem('giter-workspaces', JSON.stringify(workspaces.value));
+  localStorage.setItem('giter-current-workspace', currentWorkspaceId.value);
+};
+
+// 加载工作区列表
+const loadWorkspaces = () => {
+  const saved = localStorage.getItem('giter-workspaces');
+  if (saved) {
+    try {
+      workspaces.value = JSON.parse(saved);
+      // 加载当前工作区 ID
+      const savedCurrent = localStorage.getItem('giter-current-workspace');
+      if (savedCurrent && workspaces.value.length > 0) {
+        const found = workspaces.value.find(w => w.id === savedCurrent);
+        if (found) {
+          currentWorkspaceId.value = savedCurrent;
+          projects.value = found.projects;
+        } else {
+          // 默认选择第一个工作区
+          currentWorkspaceId.value = workspaces.value[0].id;
+          projects.value = workspaces.value[0].projects;
+        }
+      } else if (workspaces.value.length > 0) {
+        currentWorkspaceId.value = workspaces.value[0].id;
+        projects.value = workspaces.value[0].projects;
+      }
+    } catch (e) {
+      console.error('Failed to load workspaces:', e);
+      // 兼容旧数据
+      loadProjects();
+    }
+  } else {
+    // 兼容旧数据格式
+    loadProjects();
+  }
+};
+
+// 兼容旧版本的单项目列表加载
+const loadProjects = () => {
+  const saved = localStorage.getItem('giter-projects');
+  if (saved) {
+    try {
+      const projectsData: Project[] = JSON.parse(saved);
+      if (projectsData.length > 0) {
+        // 迁移到工作区格式
+        const defaultWorkspace: Workspace = {
+          id: 'default',
+          name: '默认工作区',
+          projects: projectsData
+        };
+        workspaces.value = [defaultWorkspace];
+        currentWorkspaceId.value = 'default';
+        projects.value = projectsData;
+        saveWorkspaces();
+        // 清除旧数据
+        localStorage.removeItem('giter-projects');
+      }
+    } catch (e) {
+      console.error('Failed to load projects:', e);
+    }
+  }
 };
 
 // 导出项目列表为 JSON 文件
@@ -946,7 +1025,7 @@ const importProjects = async () => {
           }
         }
 
-        saveProjects();
+        saveWorkspaces();
 
         // 预加载所有新导入项目的缓存
         if (newProjects.length > 0) {
@@ -972,8 +1051,64 @@ const importProjects = async () => {
     }
   } catch (e) {
     console.error('Failed to import projects:', e);
-    alert('导入失败: ' + e);
+    alert('导入失败：' + e);
   }
+};
+
+// 添加工作区
+const addWorkspace = () => {
+  const name = prompt('请输入工作区名称：');
+  if (!name) return;
+
+  const newWorkspace: Workspace = {
+    id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+    name,
+    projects: []
+  };
+
+  workspaces.value.push(newWorkspace);
+  currentWorkspaceId.value = newWorkspace.id;
+  projects.value = [];
+  saveWorkspaces();
+};
+
+// 切换工作区
+const switchWorkspace = (workspaceId: string) => {
+  const workspace = workspaces.value.find(w => w.id === workspaceId);
+  if (!workspace) return;
+
+  currentWorkspaceId.value = workspaceId;
+  projects.value = workspace.projects;
+  currentProjectId.value = '';
+  currentPath.value = '';
+  fileTree.value = [];
+  currentFile.value = null;
+  saveWorkspaces();
+};
+
+// 删除工作区
+const removeWorkspace = (workspaceId: string) => {
+  const index = workspaces.value.findIndex(w => w.id === workspaceId);
+  if (index === -1) return;
+
+  if (!confirm(`确定要删除工作区 "${workspaces.value[index].name}" 吗？此操作不可恢复。`)) {
+    return;
+  }
+
+  workspaces.value.splice(index, 1);
+
+  // 如果删除的是当前工作区，切换到第一个工作区
+  if (currentWorkspaceId.value === workspaceId) {
+    if (workspaces.value.length > 0) {
+      currentWorkspaceId.value = workspaces.value[0].id;
+      projects.value = workspaces.value[0].projects;
+    } else {
+      currentWorkspaceId.value = '';
+      projects.value = [];
+    }
+  }
+
+  saveWorkspaces();
 };
 
 // 打开系统设置
@@ -1023,7 +1158,7 @@ const onLoadWorkspace = (workspaceProjects: Project[]) => {
     }
   }
 
-  saveProjects();
+  saveWorkspaces();
 };
 
 // 侧边栏折叠/展开
