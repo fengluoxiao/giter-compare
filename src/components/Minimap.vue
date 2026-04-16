@@ -8,11 +8,11 @@
     @mouseleave="handleMouseUp"
   >
     <div
-      v-for="(line, index) in mergedLines"
+      v-for="(line, index) in scaledLines"
       :key="index"
       class="minimap-line"
       :class="line.changeType"
-      :style="{ height: lineHeight + 'px' }"
+      :style="{ height: scaledLineHeight + 'px' }"
     ></div>
     <div class="minimap-viewport" :style="viewportStyle"></div>
   </div>
@@ -42,8 +42,6 @@ const emit = defineEmits<{
 
 const minimapRef = ref<HTMLElement | null>(null);
 const isDragging = ref(false);
-
-const MINIMAP_LINE_HEIGHT = 3;
 
 // 合并左右两侧的 lines，优先显示有变更的类型
 const mergedLines = computed(() => {
@@ -75,24 +73,82 @@ const mergedLines = computed(() => {
   return result;
 });
 
-const minimapHeight = computed(() => {
-  return mergedLines.value.length * MINIMAP_LINE_HEIGHT;
+// 将多行合并为一个像素行，实现缩放效果
+const MINIMAP_HEIGHT = 200; // minimap 固定高度（像素）
+const MINIMAP_LINE_HEIGHT = 2; // 每行像素高度
+
+const scaledLines = computed(() => {
+  const totalLines = mergedLines.value.length;
+  if (totalLines === 0) return [];
+
+  // 计算需要多少像素行来表示整个文件
+  const pixelRows = Math.ceil(MINIMAP_HEIGHT / MINIMAP_LINE_HEIGHT);
+  const linesPerPixel = totalLines / pixelRows;
+
+  const result: DiffLine[] = [];
+
+  for (let i = 0; i < pixelRows; i++) {
+    const startLine = Math.floor(i * linesPerPixel);
+    const endLine = Math.floor((i + 1) * linesPerPixel);
+
+    // 找出这个像素范围内优先级最高的变更类型
+    let changeType = 'unchanged';
+
+    for (let j = startLine; j < endLine && j < totalLines; j++) {
+      const line = mergedLines.value[j];
+      if (!line) continue;
+
+      // 优先级：added > removed > changed > unchanged > empty
+      if (line.changeType === 'added') {
+        changeType = 'added';
+        break; // 最高优先级，直接跳出
+      } else if (line.changeType === 'removed' && changeType !== 'added') {
+        changeType = 'removed';
+      } else if (line.changeType === 'changed' && changeType !== 'added' && changeType !== 'removed') {
+        changeType = 'changed';
+      } else if (line.changeType === 'empty' && changeType === 'unchanged') {
+        changeType = 'empty';
+      }
+    }
+
+    result.push({
+      lineNum: i,
+      content: '',
+      changeType,
+      isDiff: changeType !== 'unchanged' && changeType !== 'empty'
+    });
+  }
+
+  return result;
 });
 
-const lineHeight = computed(() => {
+const scaledLineHeight = computed(() => {
   return MINIMAP_LINE_HEIGHT;
 });
 
 const viewportStyle = computed(() => {
-  if (!props.contentHeight || props.contentHeight <= props.containerHeight) {
+  const totalLines = mergedLines.value.length;
+  if (totalLines === 0) {
     return { display: 'none' };
   }
 
-  const scrollRatio = props.scrollTop / props.contentHeight;
-  const viewportRatio = props.containerHeight / props.contentHeight;
+  // 计算可见行数
+  const estimatedLineHeight = 20; // 代码编辑器中每行大约20px
+  const visibleLines = Math.ceil(props.containerHeight / estimatedLineHeight);
 
-  const top = scrollRatio * minimapHeight.value;
-  const height = Math.max(viewportRatio * minimapHeight.value, 20);
+  if (totalLines <= visibleLines) {
+    return { display: 'none' };
+  }
+
+  // 计算滚动比例
+  const currentLine = Math.floor(props.scrollTop / estimatedLineHeight);
+  const scrollRatio = Math.min(currentLine / totalLines, 1);
+  const viewportRatio = Math.min(visibleLines / totalLines, 1);
+
+  // 在缩放的 minimap 上显示 viewport
+  const minimapHeight = scaledLines.value.length * MINIMAP_LINE_HEIGHT;
+  const top = scrollRatio * minimapHeight;
+  const height = Math.max(viewportRatio * minimapHeight, 10);
 
   return {
     top: `${top}px`,
@@ -105,9 +161,15 @@ const jumpToPosition = (clientY: number) => {
 
   const rect = minimapRef.value.getBoundingClientRect();
   const clickY = clientY - rect.top;
-  const lineIndex = Math.floor(clickY / MINIMAP_LINE_HEIGHT);
+  const pixelRow = Math.floor(clickY / MINIMAP_LINE_HEIGHT);
 
-  emit('jump', Math.max(0, Math.min(lineIndex, mergedLines.value.length - 1)));
+  // 将像素行转换回实际行号
+  const totalLines = mergedLines.value.length;
+  const pixelRows = scaledLines.value.length;
+  const linesPerPixel = totalLines / pixelRows;
+  const lineIndex = Math.floor(pixelRow * linesPerPixel);
+
+  emit('jump', Math.max(0, Math.min(lineIndex, totalLines - 1)));
 };
 
 const handleMouseDown = (e: MouseEvent) => {
@@ -129,6 +191,7 @@ const handleMouseUp = () => {
 .minimap {
   width: 60px;
   height: 100%;
+  max-height: 200px;
   background-color: var(--bg-secondary);
   border-left: 1px solid var(--border-color);
   position: relative;
@@ -137,6 +200,7 @@ const handleMouseUp = () => {
   flex-shrink: 0;
   display: flex;
   flex-direction: column;
+  align-self: flex-start;
 }
 
 .minimap-line {
