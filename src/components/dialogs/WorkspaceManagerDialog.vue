@@ -126,28 +126,51 @@ const workspaceName = ref('');
 const workspaces = ref<Workspace[]>([]);
 const selectedWorkspaceId = ref<string>('');
 
-const WORKSPACE_STORAGE_KEY = 'giter-workspaces';
+const WORKSPACE_FILE_NAME = 'workspaces.json';
+
+// 获取工作区文件路径
+const getWorkspaceFilePath = async () => {
+  const { appDataDir } = await import('@tauri-apps/api/path');
+  const { join } = await import('@tauri-apps/api/path');
+  const appData = await appDataDir();
+  return await join(appData, WORKSPACE_FILE_NAME);
+};
 
 // 加载已保存的工作区
-const loadWorkspaces = () => {
-  const saved = localStorage.getItem(WORKSPACE_STORAGE_KEY);
-  if (saved) {
-    try {
-      workspaces.value = JSON.parse(saved);
-    } catch (e) {
-      console.error('Failed to load workspaces:', e);
-      workspaces.value = [];
-    }
+const loadWorkspaces = async () => {
+  try {
+    const { readTextFile } = await import('@tauri-apps/plugin-fs');
+    const filePath = await getWorkspaceFilePath();
+    const content = await readTextFile(filePath);
+    workspaces.value = JSON.parse(content);
+  } catch (e) {
+    console.log('No saved workspaces found or failed to load:', e);
+    workspaces.value = [];
   }
 };
 
 // 保存工作区列表
-const saveWorkspaces = () => {
-  localStorage.setItem(WORKSPACE_STORAGE_KEY, JSON.stringify(workspaces.value));
+const saveWorkspaces = async () => {
+  try {
+    const { writeTextFile } = await import('@tauri-apps/plugin-fs');
+    const { mkdir } = await import('@tauri-apps/plugin-fs');
+    const { appDataDir } = await import('@tauri-apps/api/path');
+    const { BaseDirectory } = await import('@tauri-apps/plugin-fs');
+
+    // 确保目录存在
+    await mkdir('', { baseDir: BaseDirectory.AppData, recursive: true });
+
+    const filePath = await getWorkspaceFilePath();
+    await writeTextFile(filePath, JSON.stringify(workspaces.value, null, 2));
+  } catch (e) {
+    console.error('Failed to save workspaces:', e);
+    // 降级到 localStorage
+    localStorage.setItem('giter-workspaces-backup', JSON.stringify(workspaces.value));
+  }
 };
 
 // 保存当前工作区
-const saveWorkspace = () => {
+const saveWorkspace = async () => {
   const name = workspaceName.value.trim();
   if (!name) return;
 
@@ -159,7 +182,7 @@ const saveWorkspace = () => {
   };
 
   workspaces.value.unshift(workspace);
-  saveWorkspaces();
+  await saveWorkspaces();
   workspaceName.value = '';
 };
 
@@ -191,15 +214,15 @@ const loadWorkspace = (workspace: Workspace) => {
 };
 
 // 删除工作区
-const deleteWorkspace = (id: string) => {
+const deleteWorkspace = async (id: string) => {
   const workspace = workspaces.value.find(w => w.id === id);
   if (!workspace) return;
-  
+
   // 直接删除，不使用 confirm
   const index = workspaces.value.findIndex(w => w.id === id);
   if (index > -1) {
     workspaces.value.splice(index, 1);
-    saveWorkspaces();
+    await saveWorkspaces();
     if (selectedWorkspaceId.value === id) {
       selectedWorkspaceId.value = '';
     }
@@ -254,8 +277,8 @@ const removeCurrentProject = (projectId: string) => {
   }
 };
 
-onMounted(() => {
-  loadWorkspaces();
+onMounted(async () => {
+  await loadWorkspaces();
 });
 </script>
 
