@@ -6,10 +6,10 @@
         <h4>保存当前工作区</h4>
         
         <!-- 显示当前项目列表 -->
-        <div v-if="currentProjects.length > 0" class="current-projects">
-          <div class="projects-header">当前项目列表 ({{ currentProjects.length }}个):</div>
+        <div v-if="localProjects.length > 0" class="current-projects">
+          <div class="projects-header">当前项目列表 ({{ localProjects.length }}个):</div>
           <div class="projects-list">
-            <div v-for="project in currentProjects" :key="project.id" class="project-item">
+            <div v-for="project in localProjects" :key="project.id" class="project-item">
               <span class="project-name">{{ project.name }}</span>
               <span class="project-path">{{ project.path }}</span>
               <button class="btn btn-icon btn-delete-project" @click.stop="removeCurrentProject(project.id)" title="从列表移除">
@@ -88,7 +88,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref, onMounted } from 'vue';
+import { ref, onMounted, watch } from 'vue';
 import DialogBase from './DialogBase.vue';
 
 interface Project {
@@ -112,8 +112,15 @@ const props = defineProps<{
 const emit = defineEmits<{
   close: [];
   loadWorkspace: [projects: Project[]];
-  removeProject: [projectId: string];
 }>();
+
+// 本地项目列表副本，用于编辑
+const localProjects = ref<Project[]>([]);
+
+// 监听 props 变化，更新本地副本
+watch(() => props.currentProjects, (newProjects) => {
+  localProjects.value = [...newProjects];
+}, { immediate: true });
 
 const workspaceName = ref('');
 const workspaces = ref<Workspace[]>([]);
@@ -147,7 +154,7 @@ const saveWorkspace = () => {
   const workspace: Workspace = {
     id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
     name,
-    projects: [...props.currentProjects],
+    projects: [...localProjects.value],
     createdAt: new Date().toISOString()
   };
 
@@ -158,6 +165,9 @@ const saveWorkspace = () => {
 
 // 导入当前项目列表
 const saveCurrentWorkspace = async () => {
+  // 重置本地项目列表为当前项目列表
+  localProjects.value = [...props.currentProjects];
+  
   const now = new Date();
   const dateStr = now.toLocaleDateString() + ' ' + now.toLocaleTimeString();
   const defaultName = `工作区 ${dateStr}`;
@@ -244,9 +254,12 @@ const formatDate = (dateStr: string): string => {
   return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
 };
 
-// 从当前项目列表中移除项目
+// 从当前项目列表中移除项目（仅本地副本）
 const removeCurrentProject = (projectId: string) => {
-  emit('removeProject', projectId);
+  const index = localProjects.value.findIndex(p => p.id === projectId);
+  if (index > -1) {
+    localProjects.value.splice(index, 1);
+  }
 };
 
 onMounted(() => {
