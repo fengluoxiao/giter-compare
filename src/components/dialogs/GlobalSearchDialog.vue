@@ -1105,6 +1105,10 @@ defineExpose({
   font-size: 12px;
   line-height: 20px;
   padding: 8px 0;
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
 }
 
 .empty-content {

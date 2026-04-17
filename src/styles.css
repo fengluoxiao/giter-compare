@@ -4,6 +4,14 @@
   box-sizing: border-box;
 }
 
+/* 全局禁用文字选择 - 排除代码区域 */
+html, body, #app, .app-container, .main-container, .sidebar, .toolbar, .project-sidebar, .file-tree, .diff-viewer, .minimap, .inline-search, .global-search-overlay, .global-search-dialog, .project-header, .project-list, .project-item, .workspace-selector, .btn, .tab-bar, .tab-item, .empty-state, .pane-header, .diff-pane, .search-input, .search-form, .search-results, .result-item, .result-file, .match-line, .preview-header, .preview-title, .preview-actions, .preview-btn, .close-btn, .mode-btn, .search-btn, .file-pattern-input, .search-path, .results-header, .results-count, .results-list, .expand-icon, .file-icon, .file-path, .match-count-badge, .line-number, .line-content, .more-matches, .no-results, .no-results-icon, .no-results-text, .diff-divider, .empty-content, .search-input-group, .search-options, .option-label, .search-main-content, .code-preview-panel, .diff-view, .diff-pane, .pane-header, .pane-title, .diff-divider, .context-menu, .context-menu-item, .menu-icon, .menu-text, .context-menu-divider {
+  user-select: none !important;
+  -webkit-user-select: none !important;
+  -moz-user-select: none !important;
+  -ms-user-select: none !important;
+}
+
 :root {
   /* 深色模式（默认） */
   --bg-primary: #1e1e1e;
@@ -751,6 +759,23 @@ body {
   border-bottom: 1px solid var(--border-color);
   font-size: 12px;
   color: var(--text-secondary);
+}
+
+/* 代码区域允许选择文字 */
+.code-content,
+.code-content *,
+.code-content .code-line,
+.code-content .line-num,
+.code-content .line-text,
+.code-content .added,
+.code-content .removed,
+.code-content .changed,
+.code-content .unchanged,
+.code-content .empty {
+  user-select: text !important;
+  -webkit-user-select: text !important;
+  -moz-user-select: text !important;
+  -ms-user-select: text !important;
 }
 
 .code-content {

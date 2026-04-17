@@ -995,11 +995,95 @@ fn open_system_settings() -> Result<(), String> {
             .map_err(|e| format!("Failed to open system settings: {}", e))?;
         Ok(())
     }
-    
+
     #[cfg(not(target_os = "macos"))]
     {
         // Windows/Linux 暂不支持此功能
         Err("This feature is only available on macOS".to_string())
+    }
+}
+
+// 在终端中打开指定路径
+#[tauri::command]
+fn open_in_terminal(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        Command::new("open")
+            .arg("-a")
+            .arg("Terminal")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open terminal: {}", e))?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        Command::new("cmd")
+            .arg("/c")
+            .arg("start")
+            .arg("cmd")
+            .arg("/K")
+            .arg("cd")
+            .arg("/d")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open terminal: {}", e))?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+        // 尝试常见的终端模拟器
+        let terminals = ["gnome-terminal", "konsole", "xterm", "terminator"];
+        for terminal in &terminals {
+            if Command::new("which").arg(terminal).output().map(|o| o.status.success()).unwrap_or(false) {
+                Command::new(terminal)
+                    .arg("--working-directory")
+                    .arg(&path)
+                    .spawn()
+                    .map_err(|e| format!("Failed to open terminal: {}", e))?;
+                return Ok(());
+            }
+        }
+        Err("No supported terminal emulator found".to_string())
+    }
+}
+
+// 在资源管理器中打开指定路径
+#[tauri::command]
+fn open_in_explorer(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::process::Command;
+        Command::new("open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open Finder: {}", e))?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "windows")]
+    {
+        use std::process::Command;
+        Command::new("explorer")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open Explorer: {}", e))?;
+        Ok(())
+    }
+
+    #[cfg(target_os = "linux")]
+    {
+        use std::process::Command;
+        Command::new("xdg-open")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open file manager: {}", e))?;
+        Ok(())
     }
 }
 
@@ -1034,6 +1118,8 @@ pub fn run() {
             get_installed_plugins,
             remove_plugin,
             open_system_settings,
+            open_in_terminal,
+            open_in_explorer,
             search::search_in_file,
             search::search_in_directory
         ])

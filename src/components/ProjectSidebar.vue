@@ -55,6 +55,7 @@
         class="project-item"
         :class="{ active: currentProjectId === project.id }"
         @click="$emit('switch-project', project)"
+        @contextmenu.prevent="showContextMenu($event, project)"
         :title="(project.name ? project.name + '\n' : '') + project.path"
       >
         <span class="project-icon">📁</span>
@@ -79,10 +80,44 @@
       class="resize-handle"
       @mousedown="$emit('start-resize', $event)"
     ></div>
+
+    <!-- 右键菜单 -->
+    <div
+      v-if="contextMenu.visible"
+      class="context-menu"
+      :style="{ left: contextMenu.x + 'px', top: contextMenu.y + 'px' }"
+      @click.stop
+    >
+      <div class="context-menu-item" @click="handleOpenInTerminal">
+        <span class="menu-icon">🖥️</span>
+        <span class="menu-text">在终端中打开</span>
+      </div>
+      <div class="context-menu-item" @click="handleOpenInExplorer">
+        <span class="menu-icon">📂</span>
+        <span class="menu-text">在资源管理器中打开</span>
+      </div>
+      <div class="context-menu-divider"></div>
+      <div class="context-menu-item" @click="handleProjectSettings">
+        <span class="menu-icon">⚙️</span>
+        <span class="menu-text">项目设置</span>
+      </div>
+      <div class="context-menu-item" @click="handleCopyPath">
+        <span class="menu-icon">📋</span>
+        <span class="menu-text">复制路径</span>
+      </div>
+      <div class="context-menu-divider"></div>
+      <div class="context-menu-item danger" @click="handleRemoveProject">
+        <span class="menu-icon">🗑️</span>
+        <span class="menu-text">从列表中移除</span>
+      </div>
+    </div>
   </aside>
 </template>
 
 <script setup lang="ts">
+import { ref, onMounted, onUnmounted } from 'vue';
+import { invoke } from '@tauri-apps/api/core';
+
 interface Project {
   id: string;
   name: string;
@@ -93,6 +128,13 @@ interface Workspace {
   id: string;
   name: string;
   projects: Project[];
+}
+
+interface ContextMenuState {
+  visible: boolean;
+  x: number;
+  y: number;
+  project: Project | null;
 }
 
 const props = defineProps<{
@@ -116,6 +158,13 @@ const emit = defineEmits<{
   'switch-workspace': [workspaceId: string];
 }>();
 
+const contextMenu = ref<ContextMenuState>({
+  visible: false,
+  x: 0,
+  y: 0,
+  project: null
+});
+
 const onWorkspaceChange = (event: Event) => {
   const target = event.target as HTMLSelectElement;
   emit('switch-workspace', target.value);
@@ -127,6 +176,95 @@ const getFolderName = (path: string): string => {
   const parts = path.split(/[\\/]/);
   return parts[parts.length - 1] || parts[parts.length - 2] || '新项目';
 };
+
+// 显示右键菜单
+const showContextMenu = (event: MouseEvent, project: Project) => {
+  contextMenu.value = {
+    visible: true,
+    x: event.clientX,
+    y: event.clientY,
+    project
+  };
+};
+
+// 隐藏右键菜单
+const hideContextMenu = () => {
+  contextMenu.value.visible = false;
+  contextMenu.value.project = null;
+};
+
+// 在终端中打开
+const handleOpenInTerminal = async () => {
+  if (contextMenu.value.project) {
+    try {
+      await invoke('open_in_terminal', { path: contextMenu.value.project.path });
+    } catch (error) {
+      console.error('打开终端失败:', error);
+      alert('打开终端失败：' + error);
+    }
+  }
+  hideContextMenu();
+};
+
+// 在资源管理器中打开
+const handleOpenInExplorer = async () => {
+  if (contextMenu.value.project) {
+    try {
+      await invoke('open_in_explorer', { path: contextMenu.value.project.path });
+    } catch (error) {
+      console.error('打开资源管理器失败:', error);
+      alert('打开资源管理器失败：' + error);
+    }
+  }
+  hideContextMenu();
+};
+
+// 项目设置
+const handleProjectSettings = () => {
+  if (contextMenu.value.project) {
+    // TODO: 打开项目设置对话框
+    console.log('打开项目设置:', contextMenu.value.project);
+    alert('项目设置功能即将推出');
+  }
+  hideContextMenu();
+};
+
+// 复制路径
+const handleCopyPath = async () => {
+  if (contextMenu.value.project) {
+    try {
+      await navigator.clipboard.writeText(contextMenu.value.project.path);
+      console.log('路径已复制:', contextMenu.value.project.path);
+    } catch (error) {
+      console.error('复制路径失败:', error);
+    }
+  }
+  hideContextMenu();
+};
+
+// 从列表中移除项目
+const handleRemoveProject = () => {
+  if (contextMenu.value.project) {
+    emit('remove-project', contextMenu.value.project.id);
+  }
+  hideContextMenu();
+};
+
+// 点击其他地方隐藏菜单
+const handleClickOutside = (event: MouseEvent) => {
+  const target = event.target as HTMLElement;
+  if (!target.closest('.context-menu')) {
+    hideContextMenu();
+  }
+};
+
+onMounted(() => {
+  document.addEventListener('click', handleClickOutside);
+});
+
+onUnmounted(() => {
+  document.removeEventListener('click', handleClickOutside);
+});
 </script>
 
 <style scoped>
@@ -320,5 +458,56 @@ const getFolderName = (path: string): string => {
 .btn-export:hover,
 .btn-import:hover {
   color: var(--accent-color);
+}
+
+/* 右键菜单 */
+.context-menu {
+  position: fixed;
+  background-color: var(--bg-primary);
+  border: 1px solid var(--border-color);
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+  z-index: 1000;
+  min-width: 180px;
+  padding: 4px 0;
+}
+
+.context-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  font-size: 13px;
+  color: var(--text-primary);
+}
+
+.context-menu-item:hover {
+  background-color: var(--bg-hover);
+}
+
+.context-menu-item.danger {
+  color: #f44336;
+}
+
+.context-menu-item.danger:hover {
+  background-color: rgba(244, 67, 54, 0.1);
+}
+
+.menu-icon {
+  font-size: 14px;
+  width: 20px;
+  text-align: center;
+}
+
+.menu-text {
+  flex: 1;
+}
+
+.context-menu-divider {
+  height: 1px;
+  background-color: var(--border-color);
+  margin: 4px 0;
 }
 </style>
