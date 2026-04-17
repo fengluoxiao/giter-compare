@@ -127,11 +127,6 @@ const toggleExpand = (index: number) => {
   expandedFiles.value[index] = !expandedFiles.value[index];
 };
 
-// 打开文件
-const openFile = (path: string) => {
-  emit('open-file', path);
-};
-
 // 打开搜索对话框
 const open = (path: string) => {
   repoPath.value = path;
