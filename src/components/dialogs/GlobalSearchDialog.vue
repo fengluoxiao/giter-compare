@@ -479,6 +479,8 @@ defineExpose({
   border-bottom: 1px solid var(--border-color-light);
   cursor: pointer;
   transition: background-color 0.2s;
+  max-height: 200px;
+  overflow: hidden;
 }
 
 .match-line:hover {
@@ -500,6 +502,11 @@ defineExpose({
   white-space: pre-wrap;
   word-break: break-all;
   color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
 }
 
 :deep(.search-highlight) {
