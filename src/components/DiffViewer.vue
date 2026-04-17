@@ -32,6 +32,8 @@
               :lines="rightLines" 
               :filename="currentFile?.path || ''"
               :theme="theme || 'light'"
+              :search-matches="leftSearchMatches"
+              :current-match-index="currentLeftMatchIndex"
             />
           </div>
         </div>
@@ -45,6 +47,8 @@
               :lines="leftLines" 
               :filename="currentFile?.path || ''"
               :theme="theme || 'light'"
+              :search-matches="rightSearchMatches"
+              :current-match-index="currentRightMatchIndex"
             />
           </div>
         </div>
@@ -134,6 +138,10 @@ const codeContentHeight = ref(0);
 // 搜索相关
 const searchMatches = ref<SearchMatch[]>([]);
 const currentSearchMatch = ref<SearchMatch | null>(null);
+const leftSearchMatches = ref<SearchMatch[]>([]);
+const rightSearchMatches = ref<SearchMatch[]>([]);
+const currentLeftMatchIndex = ref(-1);
+const currentRightMatchIndex = ref(-1);
 
 // 合并左右两侧内容用于搜索
 const combinedContent = computed(() => {
@@ -152,9 +160,68 @@ const handleHighlightMatch = (matches: SearchMatch[], currentMatch: SearchMatch)
   searchMatches.value = matches;
   currentSearchMatch.value = currentMatch;
   
-  // TODO: 实现高亮显示和跳转逻辑
+  // 将匹配项分配到左右两侧
+  // 假设分隔线之前的行属于右侧（工作区），之后的行属于左侧（HEAD）
+  const separatorLineIndex = props.rightLines.length;
+  
+  leftSearchMatches.value = [];
+  rightSearchMatches.value = [];
+  
+  for (let i = 0; i < matches.length; i++) {
+    const match = matches[i];
+    if (match.lineIndex < separatorLineIndex) {
+      // 右侧（工作区）
+      rightSearchMatches.value.push({
+        lineIndex: match.lineIndex,
+        columnIndex: match.columnIndex,
+        text: match.text
+      });
+    } else {
+      // 左侧（HEAD）
+      leftSearchMatches.value.push({
+        lineIndex: match.lineIndex - separatorLineIndex,
+        columnIndex: match.columnIndex,
+        text: match.text
+      });
+    }
+  }
+  
+  // 计算当前匹配项在左右两侧的索引
   if (currentMatch) {
-    console.log('跳转到匹配项:', currentMatch.lineNumber, currentMatch.column);
+    if (currentMatch.lineIndex < separatorLineIndex) {
+      currentRightMatchIndex.value = rightSearchMatches.value.findIndex(
+        m => m.lineIndex === currentMatch.lineIndex && m.columnIndex === currentMatch.columnIndex
+      );
+      currentLeftMatchIndex.value = -1;
+    } else {
+      currentLeftMatchIndex.value = leftSearchMatches.value.findIndex(
+        m => m.lineIndex === currentMatch.lineIndex - separatorLineIndex && m.columnIndex === currentMatch.columnIndex
+      );
+      currentRightMatchIndex.value = -1;
+    }
+    
+    // 跳转到匹配项
+    scrollToMatch(currentMatch);
+  } else {
+    currentLeftMatchIndex.value = -1;
+    currentRightMatchIndex.value = -1;
+  }
+};
+
+// 滚动到匹配项
+const scrollToMatch = (match: SearchMatch) => {
+  const separatorLineIndex = props.rightLines.length;
+  const targetEl = match.lineIndex < separatorLineIndex ? rightCodeContent.value : leftCodeContent.value;
+  const lineIndex = match.lineIndex < separatorLineIndex ? match.lineIndex : match.lineIndex - separatorLineIndex;
+  
+  if (targetEl) {
+    const lineHeight = 24; // 假设每行高度为 24px
+    const targetScrollTop = lineIndex * lineHeight - 100; // 减去 100px 让匹配项显示在可见区域上方
+    
+    targetEl.scrollTop = Math.max(0, targetScrollTop);
+    
+    // 更新 minimap 状态
+    leftScrollTop.value = targetEl.scrollTop;
   }
 };
 
