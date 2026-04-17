@@ -27,6 +27,12 @@
       @close-to-right="closeTabsToRight"
     />
 
+    <!-- 全局搜索对话框 -->
+    <GlobalSearchDialog
+      ref="globalSearchDialog"
+      @open-file="handleGlobalSearchOpenFile"
+    />
+
     <!-- 主内容区 -->
     <div class="main-container">
       <!-- 左侧项目列表 -->
@@ -181,7 +187,7 @@ import ProjectSidebar from './ProjectSidebar.vue';
 import FileTreeSidebar from './FileTreeSidebar.vue';
 import DiffViewer from './DiffViewer.vue';
 import TabBar, { type Tab } from './TabBar.vue';
-import { FileCompareDialog, TextCompareDialog, AddProjectDialog, PluginManagerDialog, WorkspaceManagerDialog, PromptDialog } from './dialogs';
+import { FileCompareDialog, TextCompareDialog, AddProjectDialog, PluginManagerDialog, WorkspaceManagerDialog, PromptDialog, GlobalSearchDialog } from './dialogs';
 
 interface FileNode {
   name: string;
@@ -255,6 +261,9 @@ const showPluginManager = ref(false);
 const showWorkspaceManager = ref(false);
 const showPermissionDialog = ref(false);
 const showPromptDialog = ref(false);
+
+// 全局搜索对话框
+const globalSearchDialog = ref<InstanceType<typeof GlobalSearchDialog> | null>(null);
 const promptTitle = ref('');
 const promptMessage = ref('');
 const promptValue = ref('');
@@ -365,6 +374,9 @@ onMounted(async () => {
   // 设置初始窗口标题
   getCurrentWindow().setTitle('Giter Compare');
 
+  // 添加全局快捷键监听
+  window.addEventListener('keydown', handleGlobalKeyDown);
+
   unlistenFileChange = await listen('file-changed', (event: any) => {
     if (currentPath.value) {
       // 检查是否是结构变化（新增/删除文件或文件夹）
@@ -395,6 +407,8 @@ onUnmounted(() => {
   if (unlistenFileChange) {
     unlistenFileChange();
   }
+  // 移除全局快捷键监听
+  window.removeEventListener('keydown', handleGlobalKeyDown);
 });
 
 // 主题切换
@@ -2136,6 +2150,39 @@ const showCompareFileDialog = () => {
   compareOldPath.value = '';
   compareNewPath.value = '';
   showCompareFile.value = true;
+};
+
+// 全局搜索快捷键处理
+const handleGlobalKeyDown = (event: KeyboardEvent) => {
+  // Ctrl + Alt + F (Windows/Linux) 或 Cmd + Control + F (macOS)
+  const isMac = navigator.platform.toUpperCase().indexOf('MAC') >= 0;
+  if (isMac) {
+    if (event.metaKey && event.ctrlKey && event.key === 'f') {
+      event.preventDefault();
+      if (currentPath.value && globalSearchDialog.value) {
+        globalSearchDialog.value.open(currentPath.value);
+      }
+    }
+  } else {
+    if (event.ctrlKey && event.altKey && event.key === 'f') {
+      event.preventDefault();
+      if (currentPath.value && globalSearchDialog.value) {
+        globalSearchDialog.value.open(currentPath.value);
+      }
+    }
+  }
+};
+
+// 全局搜索打开文件处理
+const handleGlobalSearchOpenFile = (path: string, lineNumber?: number) => {
+  // 关闭搜索对话框
+  if (globalSearchDialog.value) {
+    globalSearchDialog.value.close();
+  }
+  
+  // 打开文件
+  // TODO: 实现打开文件并跳转到指定行
+  console.log('打开文件:', path, '行号:', lineNumber);
 };
 
 const selectOldFile = async () => {
