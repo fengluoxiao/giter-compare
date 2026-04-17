@@ -2226,34 +2226,40 @@ const handleGlobalSearchOpenFile = (path: string, lineNumber?: number) => {
     ? path.substring(currentPath.value.length).replace(/^[/\\]/, '')
     : path;
   
-  // 打开文件并跳转到指定行
-  if (lineNumber) {
-    // 如果当前没有打开这个文件，创建新标签
-    const existingTab = tabs.value.find(tab => tab.path === relativePath);
-    if (existingTab) {
-      activateTab(existingTab.id);
+  // 在文件树中查找该文件
+  const findFileInTree = (nodes: FileNode[], targetPath: string): FileNode | null => {
+    for (const node of nodes) {
+      if (node.path === targetPath) {
+        return node;
+      }
+      if (node.children) {
+        const found = findFileInTree(node.children, targetPath);
+        if (found) return found;
+      }
+    }
+    return null;
+  };
+  
+  const fileNode = findFileInTree(fileTree.value, relativePath);
+  
+  if (fileNode) {
+    // 文件在文件树中，激活差异对比
+    selectFile(fileNode);
+    
+    // 跳转到指定行
+    setTimeout(() => {
+      const event = new CustomEvent('jump-to-line', { detail: lineNumber });
+      window.dispatchEvent(event);
+    }, 100);
+  } else {
+    // 文件不在文件树中（可能是未跟踪的文件），打开文件查看
+    openFileByPath(relativePath).then(() => {
       // 跳转到指定行
       setTimeout(() => {
         const event = new CustomEvent('jump-to-line', { detail: lineNumber });
         window.dispatchEvent(event);
       }, 100);
-    } else {
-      openFileByPath(relativePath).then(() => {
-        // 跳转到指定行
-        setTimeout(() => {
-          const event = new CustomEvent('jump-to-line', { detail: lineNumber });
-          window.dispatchEvent(event);
-        }, 100);
-      });
-    }
-  } else {
-    // 不跳转行，只打开文件
-    const existingTab = tabs.value.find(tab => tab.path === relativePath);
-    if (existingTab) {
-      activateTab(existingTab.id);
-    } else {
-      openFileByPath(relativePath);
-    }
+    });
   }
 };
 
