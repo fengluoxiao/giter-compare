@@ -8,6 +8,107 @@ use std::path::Path;
 use std::time::Duration;
 use tauri::{Emitter, Manager};
 
+// 声明 Swift 函数
+#[cfg(target_os = "macos")]
+extern "C" {
+    fn swift_show_panel(content: *const i8, title: *const i8, button_text: *const i8);
+    fn swift_show_alert(title: *const i8, message: *const i8, button_text: *const i8);
+}
+
+// SwiftUI 相关数据结构
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct OpenPanelRequest {
+    pub content: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub title: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub button_text: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ShowAlertRequest {
+    pub title: String,
+    pub message: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub button_text: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SwiftUIResponse {
+    pub status: String,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub message: Option<String>,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    pub action: Option<String>,
+}
+
+// SwiftUI 命令
+#[tauri::command]
+async fn open_swiftui_panel(request: OpenPanelRequest) -> Result<SwiftUIResponse, String> {
+    println!("打开 SwiftUI 面板: {:?}", request);
+    
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CString;
+        
+        let content = CString::new(request.content).map_err(|e| e.to_string())?;
+        let title = CString::new(request.title.unwrap_or_else(|| "SwiftUI Panel".to_string())).map_err(|e| e.to_string())?;
+        let button_text = CString::new(request.button_text.unwrap_or_else(|| "OK".to_string())).map_err(|e| e.to_string())?;
+        
+        unsafe {
+            swift_show_panel(content.as_ptr(), title.as_ptr(), button_text.as_ptr());
+        }
+        
+        Ok(SwiftUIResponse {
+            status: "opened".to_string(),
+            message: Some("原生 SwiftUI 面板已打开".to_string()),
+            action: None,
+        })
+    }
+    
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(SwiftUIResponse {
+            status: "error".to_string(),
+            message: Some("仅支持 macOS".to_string()),
+            action: None,
+        })
+    }
+}
+
+#[tauri::command]
+async fn show_native_alert(request: ShowAlertRequest) -> Result<SwiftUIResponse, String> {
+    println!("显示原生警告: {:?}", request);
+    
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CString;
+        
+        let title = CString::new(request.title).map_err(|e| e.to_string())?;
+        let message = CString::new(request.message).map_err(|e| e.to_string())?;
+        let button_text = CString::new(request.button_text.unwrap_or_else(|| "确定".to_string())).map_err(|e| e.to_string())?;
+        
+        unsafe {
+            swift_show_alert(title.as_ptr(), message.as_ptr(), button_text.as_ptr());
+        }
+        
+        Ok(SwiftUIResponse {
+            status: "confirmed".to_string(),
+            message: Some("用户已确认".to_string()),
+            action: Some("alert_dismissed".to_string()),
+        })
+    }
+    
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(SwiftUIResponse {
+            status: "error".to_string(),
+            message: Some("仅支持 macOS".to_string()),
+            action: None,
+        })
+    }
+}
+
 // 声明搜索模块
 mod search;
 
@@ -1087,6 +1188,50 @@ fn open_in_explorer(path: String) -> Result<(), String> {
     }
 }
 
+#[derive(Debug, Serialize, Deserialize, Clone)]
+pub struct ContextMenuItem {
+    pub id: String,
+    pub label: String,
+    pub icon: Option<String>,
+    pub is_separator: bool,
+    pub is_disabled: bool,
+}
+
+#[tauri::command]
+async fn show_context_menu(
+    window: tauri::Window,
+    items: Vec<ContextMenuItem>,
+    _x: f64,
+    _y: f64,
+) -> Result<(), String> {
+    use tauri::menu::{Menu, MenuItem, PredefinedMenuItem, ContextMenu};
+
+    let menu = Menu::new(&window).map_err(|e| e.to_string())?;
+
+    for item in items {
+        if item.is_separator {
+            let separator = PredefinedMenuItem::separator(&window).map_err(|e| e.to_string())?;
+            menu.append(&separator).map_err(|e| e.to_string())?;
+        } else {
+            let menu_item = MenuItem::with_id(
+                &window,
+                item.id.clone(),
+                &item.label,
+                true,
+                None::<&str>,
+            )
+            .map_err(|e| e.to_string())?;
+            menu.append(&menu_item).map_err(|e| e.to_string())?;
+        }
+    }
+
+    // 在指定位置显示菜单
+    menu.popup(window)
+        .map_err(|e: tauri::Error| e.to_string())?;
+
+    Ok(())
+}
+
 pub fn run() {
     let file_watcher = Arc::new(Mutex::new(FileWatcher::new()));
 
@@ -1098,6 +1243,8 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .plugin(tauri_plugin_liquid_glass::init())
         .invoke_handler(tauri::generate_handler![
+            open_swiftui_panel,
+            show_native_alert,
             get_git_diff,
             get_file_diff,
             get_working_tree_changes,
@@ -1122,7 +1269,8 @@ pub fn run() {
             open_in_terminal,
             open_in_explorer,
             search::search_in_file,
-            search::search_in_directory
+            search::search_in_directory,
+            show_context_menu
         ])
         .setup(|app| {
             // 设置窗口效果
@@ -1133,6 +1281,9 @@ pub fn run() {
                     // 使用 tauri-plugin-liquid-class 设置液态玻璃效果
                     // macOS 14+ 支持液态玻璃效果
                     let _ = window.set_title_bar_style(tauri::TitleBarStyle::Transparent);
+                    
+                    // NSToolbar 将由前端通过插件创建
+                    println!("窗口已创建，等待前端创建 NSToolbar...");
                 }
             }
 
