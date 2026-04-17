@@ -307,8 +307,38 @@ const handleJumpToLine = (event: Event) => {
     const lineHeight = 24; // 假设每行高度为 24px
     const containerHeight = leftCodeContent.value.clientHeight;
     
-    // 首先尝试直接使用行号计算
-    let targetScrollTop = (lineNumber - 1) * lineHeight - (containerHeight / 2) + (lineHeight / 2);
+    // 如果有搜索词，尝试在 leftLines 中搜索匹配的文本
+    let targetLineIndex = lineNumber - 1; // 默认使用原始行号
+    
+    if (searchText && props.leftLines.length > 0) {
+      // 在 leftLines 中搜索包含 searchText 的行
+      const searchRegex = new RegExp(searchText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
+      
+      // 从原始行号附近开始搜索，找到最近的匹配
+      for (let offset = 0; offset < 20; offset++) {
+        // 检查当前行
+        if (lineNumber - 1 + offset < props.leftLines.length) {
+          const line = props.leftLines[lineNumber - 1 + offset];
+          if (line && searchRegex.test(line.content)) {
+            targetLineIndex = lineNumber - 1 + offset;
+            console.log('找到匹配行:', targetLineIndex + 1);
+            break;
+          }
+        }
+        // 检查上方行
+        if (lineNumber - 1 - offset >= 0 && offset > 0) {
+          const line = props.leftLines[lineNumber - 1 - offset];
+          if (line && searchRegex.test(line.content)) {
+            targetLineIndex = lineNumber - 1 - offset;
+            console.log('找到匹配行:', targetLineIndex + 1);
+            break;
+          }
+        }
+      }
+    }
+    
+    // 计算滚动位置
+    const targetScrollTop = targetLineIndex * lineHeight - (containerHeight / 2) + (lineHeight / 2);
     leftCodeContent.value.scrollTop = Math.max(0, targetScrollTop);
     
     // 同步右侧滚动
@@ -319,8 +349,8 @@ const handleJumpToLine = (event: Event) => {
     // 更新 minimap 状态
     leftScrollTop.value = leftCodeContent.value.scrollTop;
     
-    // 高亮目标行
-    highlightedLine.value = lineNumber;
+    // 高亮目标行（使用找到的实际行号）
+    highlightedLine.value = targetLineIndex + 1;
     console.log('高亮行:', highlightedLine.value, '滚动位置:', leftScrollTop.value);
     
     // 3 秒后移除高亮
