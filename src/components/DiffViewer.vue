@@ -305,7 +305,10 @@ const handleJumpToLine = (event: Event) => {
   
   if (leftCodeContent.value && lineNumber) {
     const lineHeight = 24; // 假设每行高度为 24px
-    const targetScrollTop = (lineNumber - 1) * lineHeight - 100;
+    const containerHeight = leftCodeContent.value.clientHeight;
+    
+    // 计算目标行的位置，让目标行显示在可视区域中心
+    const targetScrollTop = (lineNumber - 1) * lineHeight - (containerHeight / 2) + (lineHeight / 2);
     leftCodeContent.value.scrollTop = Math.max(0, targetScrollTop);
     
     // 同步右侧滚动
@@ -318,7 +321,7 @@ const handleJumpToLine = (event: Event) => {
     
     // 高亮目标行
     highlightedLine.value = lineNumber;
-    console.log('高亮行:', highlightedLine.value);
+    console.log('高亮行:', highlightedLine.value, '滚动位置:', leftScrollTop.value);
     
     // 3 秒后移除高亮
     setTimeout(() => {
