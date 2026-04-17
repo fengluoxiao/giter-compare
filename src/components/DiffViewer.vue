@@ -29,7 +29,7 @@
           </div>
           <div class="code-content" ref="leftCodeContent" @scroll="syncScroll('left')">
             <ShikiDiffLines 
-              :lines="isFileViewMode ? leftLines : rightLines" 
+              :lines="rightLines" 
               :filename="currentFile?.path || ''"
               :theme="theme || 'light'"
               :search-matches="leftSearchMatches"
@@ -45,7 +45,7 @@
           </div>
           <div class="code-content" ref="rightCodeContent" @scroll="syncScroll('right')">
             <ShikiDiffLines 
-              :lines="isFileViewMode ? rightLines : leftLines" 
+              :lines="leftLines" 
               :filename="currentFile?.path || ''"
               :theme="theme || 'light'"
               :search-matches="rightSearchMatches"

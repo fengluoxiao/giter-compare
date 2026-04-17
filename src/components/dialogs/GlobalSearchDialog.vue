@@ -1,6 +1,6 @@
 <template>
   <div v-if="visible" class="global-search-overlay" @click.self="close">
-    <div class="global-search-dialog">
+    <div class="global-search-dialog" :class="{ 'with-preview': showPreview }">
       <div class="search-header">
         <h3>🔍 全局搜索</h3>
         <button class="close-btn" @click="close">
@@ -41,49 +41,106 @@
         </div>
       </div>
 
-      <div class="search-results" v-if="searchResults.length > 0">
-        <div class="results-header">
-          <span class="results-count">找到 {{ totalMatches }} 个匹配，{{ searchResults.length }} 个文件</span>
-        </div>
-        
-        <div class="results-list">
-          <div 
-            v-for="(result, index) in searchResults" 
-            :key="index"
-            class="result-item"
-          >
-            <div class="result-file">
-              <span 
-                class="expand-icon" 
-                :class="{ expanded: expandedFiles[index] }"
-                @click.stop="toggleExpand(index)"
-              >▶</span>
-              <span class="file-icon" @click.stop="openFile(result.file_path)">📄</span>
-              <span class="file-path" @click.stop="openFile(result.file_path)">{{ getRelativePath(result.file_path) }}</span>
-              <span class="match-count-badge">{{ result.match_count }} 处匹配</span>
-            </div>
-            <div v-if="expandedFiles[index]" class="result-matches">
-              <!-- 对匹配行进行去重，同一行号只显示一次 -->
-              <div 
-                v-for="(match, matchIndex) in getUniqueMatches(result.matches).slice(0, 10)" 
-                :key="matchIndex"
-                class="match-line"
-                @click="openFileAtLine(result.file_path, match.line_number)"
-              >
-                <span class="line-number">{{ match.line_number }}</span>
-                <span class="line-content" v-html="highlightMatch(getContextAroundMatch(match.line_content, match.matched_text), match.matched_text)"></span>
+      <div class="search-main-content">
+        <!-- 搜索结果列表 -->
+        <div class="search-results" v-if="searchResults.length > 0" :class="{ 'narrow': showPreview }">
+          <div class="results-header">
+            <span class="results-count">找到 {{ totalMatches }} 个匹配，{{ searchResults.length }} 个文件</span>
+          </div>
+          
+          <div class="results-list">
+            <div 
+              v-for="(result, index) in searchResults" 
+              :key="index"
+              class="result-item"
+              :class="{ active: selectedResultIndex === index }"
+            >
+              <div class="result-file">
+                <span 
+                  class="expand-icon" 
+                  :class="{ expanded: expandedFiles[index] }"
+                  @click="toggleExpand(index)"
+                >▶</span>
+                <span class="file-icon" @click="openFileInMain(result.file_path)">📄</span>
+                <span class="file-path" @click="selectResult(index)">{{ getRelativePath(result.file_path) }}</span>
+                <span class="match-count-badge" @click="selectResult(index)">{{ result.match_count }} 处匹配</span>
               </div>
-              <div v-if="result.matches.length > 10" class="more-matches">
-                还有 {{ result.matches.length - 10 }} 个匹配，请打开文件查看
+              <div v-if="expandedFiles[index]" class="result-matches">
+                <!-- 对匹配行进行去重，同一行号只显示一次 -->
+                <div 
+                  v-for="(match, matchIndex) in getUniqueMatches(result.matches).slice(0, 10)" 
+                  :key="matchIndex"
+                  class="match-line"
+                  :class="{ active: selectedMatch?.fileIndex === index && selectedMatch?.matchIndex === matchIndex }"
+                  @click.stop="selectMatch(index, matchIndex, match)"
+                >
+                  <span class="line-number">{{ match.line_number }}</span>
+                  <span class="line-content" v-html="highlightMatch(getContextAroundMatch(match.line_content, match.matched_text), match.matched_text)"></span>
+                </div>
+                <div v-if="result.matches.length > 10" class="more-matches">
+                  还有 {{ result.matches.length - 10 }} 个匹配，请打开文件查看
+                </div>
               </div>
             </div>
           </div>
         </div>
-      </div>
 
-      <div v-else-if="hasSearched && !isSearching" class="no-results">
-        <span class="no-results-icon">🔍</span>
-        <span class="no-results-text">没有找到匹配项</span>
+        <div v-else-if="hasSearched && !isSearching" class="search-results no-results">
+          <span class="no-results-icon">🔍</span>
+          <span class="no-results-text">没有找到匹配项</span>
+        </div>
+
+        <!-- 代码预览区域 -->
+        <div v-if="showPreview" class="code-preview-panel">
+          <div class="preview-header">
+            <span class="preview-title">{{ getRelativePath(previewFilePath) }}</span>
+            <div class="preview-actions">
+              <button class="preview-btn" @click="openFileInMain(previewFilePath, selectedMatch?.match?.line_number)">
+                在主窗口打开
+              </button>
+              <button class="preview-btn close" @click="closePreview">✕</button>
+            </div>
+          </div>
+          <div class="preview-content">
+            <div class="diff-view">
+              <div class="diff-pane">
+                <div class="code-content" ref="oldCodeContent">
+                  <div v-if="oldLines.length === 0" class="empty-content">无内容</div>
+                  <div 
+                    v-for="(line, idx) in oldLines" 
+                    :key="idx"
+                    class="code-line"
+                    :class="{ 
+                      highlight: isLineHighlighted(line.lineNum, 'old'),
+                      'search-match': isSearchMatchLine(line.lineNum, 'old')
+                    }"
+                  >
+                    <span class="line-num">{{ line.lineNum }}</span>
+                    <span class="line-text" :class="line.changeType">{{ line.content }}</span>
+                  </div>
+                </div>
+              </div>
+              <div class="diff-divider"></div>
+              <div class="diff-pane">
+                <div class="code-content" ref="newCodeContent">
+                  <div v-if="newLines.length === 0" class="empty-content">无内容</div>
+                  <div 
+                    v-for="(line, idx) in newLines" 
+                    :key="idx"
+                    class="code-line"
+                    :class="{ 
+                      highlight: isLineHighlighted(line.lineNum, 'new'),
+                      'search-match': isSearchMatchLine(line.lineNum, 'new')
+                    }"
+                  >
+                    <span class="line-num">{{ line.lineNum }}</span>
+                    <span class="line-text" :class="line.changeType">{{ line.content }}</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   </div>
@@ -106,9 +163,34 @@ interface SearchResult {
   match_count: number;
 }
 
+interface DiffLine {
+  lineNum: number;
+  content: string;
+  changeType: string;
+  isDiff: boolean;
+}
+
+interface FileDiff {
+  old_path: string;
+  new_path: string;
+  hunks: {
+    old_start: number;
+    old_lines: number;
+    new_start: number;
+    new_lines: number;
+    lines: {
+      line_number: number;
+      content: string;
+      change_type: string;
+    }[];
+  }[];
+  old_content: string[];
+  new_content: string[];
+}
+
 const emit = defineEmits<{
   close: [];
-  'open-file': [path: string, lineNumber?: number];
+  'open-file': [path: string, lineNumber?: number, searchText?: string];
 }>();
 
 const visible = ref(false);
@@ -121,6 +203,17 @@ const searchResults = ref<SearchResult[]>([]);
 const hasSearched = ref(false);
 const repoPath = ref('');
 const expandedFiles = ref<boolean[]>([]);
+const selectedResultIndex = ref<number | null>(null);
+const selectedMatch = ref<{ fileIndex: number; matchIndex: number; match: SearchMatch } | null>(null);
+
+// 代码预览相关
+const showPreview = ref(false);
+const previewFilePath = ref('');
+const oldLines = ref<DiffLine[]>([]);
+const newLines = ref<DiffLine[]>([]);
+const oldCodeContent = ref<HTMLElement | null>(null);
+const newCodeContent = ref<HTMLElement | null>(null);
+const highlightedLine = ref<{ lineNum: number; side: 'old' | 'new' } | null>(null);
 
 const totalMatches = computed(() => {
   return searchResults.value.reduce((sum, result) => sum + result.match_count, 0);
@@ -129,6 +222,193 @@ const totalMatches = computed(() => {
 // 切换展开/折叠
 const toggleExpand = (index: number) => {
   expandedFiles.value[index] = !expandedFiles.value[index];
+  // 强制触发响应式更新
+  expandedFiles.value = [...expandedFiles.value];
+};
+
+// 选择搜索结果文件
+const selectResult = async (index: number) => {
+  selectedResultIndex.value = index;
+  const result = searchResults.value[index];
+  if (result) {
+    // 先显示预览面板
+    showPreview.value = true;
+    // 自动展开 - 强制触发响应式更新
+    expandedFiles.value[index] = true;
+    expandedFiles.value = [...expandedFiles.value];
+    // 加载文件差异
+    await loadFileDiff(result.file_path);
+  }
+};
+
+// 选择具体匹配行
+const selectMatch = async (fileIndex: number, matchIndex: number, match: SearchMatch) => {
+  selectedMatch.value = { fileIndex, matchIndex, match };
+  const result = searchResults.value[fileIndex];
+  if (result) {
+    // 先显示预览面板
+    showPreview.value = true;
+    // 加载文件差异
+    await loadFileDiff(result.file_path);
+    // 在加载完差异后，根据匹配内容找到实际的行号
+    nextTick(() => {
+      // 在新版本（newLines）中查找匹配的行
+      const actualLineIndex = newLines.value.findIndex(line => 
+        line.content.includes(match.matched_text)
+      );
+      const actualLineNum = actualLineIndex !== -1 
+        ? newLines.value[actualLineIndex].lineNum 
+        : match.line_number;
+      
+      // 高亮对应的行
+      highlightedLine.value = { lineNum: actualLineNum, side: 'new' };
+      // 滚动到对应位置
+      scrollToLine(actualLineNum);
+    });
+  }
+};
+
+// 加载文件差异
+const loadFileDiff = async (filePath: string) => {
+  previewFilePath.value = filePath;
+
+  const relativePath = getRelativePath(filePath);
+
+  try {
+    // 并行获取旧版本（HEAD）和新版本（工作区）内容
+    const [oldContentResult, newContentResult] = await Promise.allSettled([
+      // 获取 HEAD 版本
+      invoke<string>('get_file_content_at_revision', {
+        repoPath: repoPath.value,
+        filePath: relativePath,
+        revision: 'HEAD'
+      }).catch(() => ''), // 如果文件不存在于 HEAD，返回空字符串
+      // 获取工作区版本
+      invoke<string>('read_file_content', { filePath }).catch(() => '')
+    ]);
+
+    // 处理旧版本内容
+    const oldContentStr = oldContentResult.status === 'fulfilled' ? oldContentResult.value : '';
+    // 处理新版本内容
+    const newContentStr = newContentResult.status === 'fulfilled' ? newContentResult.value : '';
+
+    // 直接使用文件内容构建行列表，保持原始行号
+    // 新版本（工作区）
+    const newContentLines = newContentStr ? newContentStr.split('\n') : [];
+    // 旧版本（HEAD）
+    const oldContentLines = oldContentStr ? oldContentStr.split('\n') : [];
+
+    // 使用 compare_strings 获取差异信息
+    const diffResult = await invoke<FileDiff>('compare_strings', {
+      oldContent: oldContentStr,
+      newContent: newContentStr
+    });
+
+    // 构建变更标记集合
+    const changedLinesInNew = new Set<number>(); // 新版本中变更的行号（1-based）
+    const changedLinesInOld = new Set<number>(); // 旧版本中变更的行号（1-based）
+
+    diffResult.hunks.forEach(hunk => {
+      let oldLineCounter = hunk.old_start;
+      let newLineCounter = hunk.new_start;
+
+      hunk.lines.forEach(line => {
+        if (line.change_type === 'removed') {
+          changedLinesInOld.add(oldLineCounter);
+          oldLineCounter++;
+        } else if (line.change_type === 'added') {
+          changedLinesInNew.add(newLineCounter);
+          newLineCounter++;
+        } else {
+          // 上下文行
+          oldLineCounter++;
+          newLineCounter++;
+        }
+      });
+    });
+
+    // 构建左侧面板（新版本）的行数据
+    const leftLines: DiffLine[] = newContentLines.map((content, idx) => {
+      const lineNum = idx + 1;
+      const isChanged = changedLinesInNew.has(lineNum);
+      return {
+        lineNum,
+        content,
+        changeType: isChanged ? 'added' : 'unchanged',
+        isDiff: isChanged
+      };
+    });
+
+    // 构建右侧面板（旧版本）的行数据
+    const rightLines: DiffLine[] = oldContentLines.map((content, idx) => {
+      const lineNum = idx + 1;
+      const isChanged = changedLinesInOld.has(lineNum);
+      return {
+        lineNum,
+        content,
+        changeType: isChanged ? 'removed' : 'unchanged',
+        isDiff: isChanged
+      };
+    });
+
+    // 与主窗口保持一致：
+    // 主窗口左边显示 rightLines（旧版本），右边显示 leftLines（新版本）
+    // 全局搜索弹窗左边显示 oldLines，右边显示 newLines
+    // 所以：oldLines = rightLines（旧版本），newLines = leftLines（新版本）
+    oldLines.value = rightLines;  // 旧版本内容，显示在左边
+    newLines.value = leftLines;   // 新版本内容，显示在右边
+
+  } catch (error) {
+    console.error('加载文件差异失败:', error);
+    oldLines.value = [];
+    newLines.value = [];
+  }
+};
+
+// 滚动到指定行
+const scrollToLine = (lineNum: number) => {
+  if (newCodeContent.value) {
+    const lineHeight = 20;
+    const targetScrollTop = (lineNum - 1) * lineHeight - 100;
+    newCodeContent.value.scrollTop = Math.max(0, targetScrollTop);
+    
+    // 同步左侧滚动
+    if (oldCodeContent.value) {
+      oldCodeContent.value.scrollTop = newCodeContent.value.scrollTop;
+    }
+  }
+};
+
+// 检查行是否高亮
+const isLineHighlighted = (lineNum: number, side: 'old' | 'new') => {
+  return highlightedLine.value?.lineNum === lineNum && highlightedLine.value?.side === side;
+};
+
+// 检查是否是搜索匹配行
+const isSearchMatchLine = (lineNum: number, side: 'old' | 'new') => {
+  if (!selectedMatch.value || !searchQuery.value) return false;
+  
+  const match = selectedMatch.value.match;
+  if (match.line_number !== lineNum) return false;
+  
+  // 检查该行内容是否包含搜索词
+  const lines = side === 'old' ? oldLines.value : newLines.value;
+  const line = lines.find(l => l.lineNum === lineNum);
+  if (!line) return false;
+  
+  const searchLower = searchQuery.value.toLowerCase();
+  const contentLower = line.content.toLowerCase();
+  return contentLower.includes(searchLower);
+};
+
+// 关闭预览
+const closePreview = () => {
+  showPreview.value = false;
+  previewFilePath.value = '';
+  oldLines.value = [];
+  newLines.value = [];
+  selectedMatch.value = null;
+  highlightedLine.value = null;
 };
 
 // 打开搜索对话框
@@ -145,6 +425,9 @@ const close = () => {
   visible.value = false;
   searchResults.value = [];
   hasSearched.value = false;
+  showPreview.value = false;
+  selectedResultIndex.value = null;
+  selectedMatch.value = null;
   emit('close');
 };
 
@@ -161,6 +444,9 @@ const performSearch = async () => {
   isSearching.value = true;
   hasSearched.value = true;
   searchResults.value = [];
+  showPreview.value = false;
+  selectedResultIndex.value = null;
+  selectedMatch.value = null;
 
   try {
     const results = await invoke<SearchResult[]>('search_in_directory', {
@@ -170,6 +456,7 @@ const performSearch = async () => {
     });
     
     searchResults.value = results;
+    expandedFiles.value = new Array(results.length).fill(false);
   } catch (error) {
     console.error('搜索失败:', error);
     alert('搜索失败：' + error);
@@ -178,13 +465,8 @@ const performSearch = async () => {
   }
 };
 
-// 打开文件
-const openFile = (path: string) => {
-  emit('open-file', path);
-};
-
-// 打开文件并跳转到指定行
-const openFileAtLine = (path: string, lineNumber: number) => {
+// 在主窗口打开文件
+const openFileInMain = (path: string, lineNumber?: number) => {
   emit('open-file', path, lineNumber, searchQuery.value);
 };
 
@@ -230,17 +512,6 @@ const getRelativePath = (fullPath: string): string => {
   return fullPath;
 };
 
-// 获取唯一的行号（去重并排序）
-const getUniqueLines = (matches: SearchMatch[]): SearchMatch[] => {
-  const lineMap = new Map<number, SearchMatch>();
-  matches.forEach(match => {
-    if (!lineMap.has(match.line_number)) {
-      lineMap.set(match.line_number, match);
-    }
-  });
-  return Array.from(lineMap.values()).sort((a, b) => a.line_number - b.line_number);
-};
-
 // 暴露方法给父组件
 defineExpose({
   open,
@@ -271,6 +542,11 @@ defineExpose({
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+.global-search-dialog.with-preview {
+  width: 1400px;
+  max-width: 95vw;
 }
 
 .search-header {
@@ -413,10 +689,22 @@ defineExpose({
   text-overflow: ellipsis;
 }
 
+.search-main-content {
+  flex: 1;
+  display: flex;
+  overflow: hidden;
+}
+
 .search-results {
   flex: 1;
   overflow-y: auto;
   padding: 0;
+  min-width: 400px;
+}
+
+.search-results.narrow {
+  flex: 0 0 400px;
+  border-right: 1px solid var(--border-color);
 }
 
 .results-header {
@@ -436,6 +724,10 @@ defineExpose({
 
 .result-item {
   border-bottom: 1px solid var(--border-color);
+}
+
+.result-item.active {
+  background-color: var(--bg-hover);
 }
 
 .result-file {
@@ -481,7 +773,6 @@ defineExpose({
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
-  cursor: pointer;
 }
 
 .match-count-badge {
@@ -512,6 +803,15 @@ defineExpose({
   background-color: var(--bg-hover);
 }
 
+.match-line.active {
+  background-color: var(--accent-color);
+  color: white;
+}
+
+.match-line.active .line-number {
+  color: rgba(255, 255, 255, 0.8);
+}
+
 .line-number {
   color: var(--text-secondary);
   font-family: monospace;
@@ -533,6 +833,11 @@ defineExpose({
   background-color: rgba(255, 235, 59, 0.5);
   border-radius: 2px;
   padding: 1px 2px;
+}
+
+.match-line.active :deep(.search-highlight) {
+  background-color: rgba(255, 255, 0, 0.8);
+  color: black;
 }
 
 .more-matches {
@@ -558,5 +863,156 @@ defineExpose({
 
 .no-results-text {
   font-size: 14px;
+}
+
+/* 代码预览面板 */
+.code-preview-panel {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+  background-color: var(--bg-primary);
+}
+
+.preview-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 12px 16px;
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+}
+
+.preview-title {
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-primary);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.preview-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.preview-btn {
+  padding: 6px 12px;
+  background-color: var(--accent-color);
+  color: white;
+  border: none;
+  border-radius: 4px;
+  cursor: pointer;
+  font-size: 12px;
+}
+
+.preview-btn:hover {
+  opacity: 0.9;
+}
+
+.preview-btn.close {
+  background-color: transparent;
+  color: var(--text-secondary);
+  font-size: 16px;
+  padding: 4px 8px;
+}
+
+.preview-btn.close:hover {
+  color: var(--text-primary);
+  background-color: var(--bg-hover);
+}
+
+.preview-content {
+  flex: 1;
+  overflow: hidden;
+}
+
+.diff-view {
+  display: flex;
+  height: 100%;
+  overflow: hidden;
+}
+
+.diff-pane {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.pane-header {
+  padding: 8px 12px;
+  background-color: var(--bg-secondary);
+  border-bottom: 1px solid var(--border-color);
+  font-size: 11px;
+  color: var(--text-secondary);
+  text-transform: uppercase;
+  font-weight: 600;
+}
+
+.diff-divider {
+  width: 1px;
+  background-color: var(--border-color);
+}
+
+.code-content {
+  flex: 1;
+  overflow: auto;
+  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-size: 12px;
+  line-height: 20px;
+  padding: 8px 0;
+}
+
+.empty-content {
+  padding: 40px;
+  text-align: center;
+  color: var(--text-secondary);
+  font-size: 13px;
+}
+
+.code-line {
+  display: flex;
+  padding: 0 8px;
+  white-space: pre;
+}
+
+.code-line:hover {
+  background-color: var(--bg-hover);
+}
+
+.code-line.highlight {
+  background-color: rgba(255, 235, 59, 0.3);
+}
+
+.code-line.search-match {
+  background-color: rgba(255, 235, 59, 0.5);
+}
+
+.line-num {
+  min-width: 50px;
+  text-align: right;
+  padding-right: 12px;
+  color: var(--text-secondary);
+  user-select: none;
+}
+
+.line-text {
+  flex: 1;
+  white-space: pre;
+}
+
+.line-text.added {
+  background-color: rgba(76, 175, 80, 0.2);
+}
+
+.line-text.removed {
+  background-color: rgba(244, 67, 54, 0.2);
+}
+
+.line-text.changed {
+  background-color: rgba(33, 150, 243, 0.2);
 }
 </style>
