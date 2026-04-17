@@ -51,23 +51,26 @@
             v-for="(result, index) in searchResults" 
             :key="index"
             class="result-item"
-            @click="openFile(result.file_path)"
           >
             <div class="result-file">
-              <span class="file-icon">📄</span>
-              <span class="file-path">{{ getRelativePath(result.file_path) }}</span>
+              <span 
+                class="expand-icon" 
+                :class="{ expanded: expandedFiles[index] }"
+                @click.stop="toggleExpand(index)"
+              >▶</span>
+              <span class="file-icon" @click.stop="openFile(result.file_path)">📄</span>
+              <span class="file-path" @click.stop="openFile(result.file_path)">{{ getRelativePath(result.file_path) }}</span>
               <span class="match-count-badge">{{ result.match_count }} 处匹配</span>
             </div>
-            <div class="result-lines">
-              <div class="line-numbers">
-                <span 
-                  v-for="(match, matchIndex) in getUniqueLines(result.matches)" 
-                  :key="matchIndex"
-                  class="line-number-item"
-                  @click.stop="openFileAtLine(result.file_path, match.line_number)"
-                >
-                  {{ match.line_number }}
-                </span>
+            <div v-if="expandedFiles[index]" class="result-matches">
+              <div 
+                v-for="(match, matchIndex) in result.matches" 
+                :key="matchIndex"
+                class="match-line"
+                @click="openFileAtLine(result.file_path, match.line_number)"
+              >
+                <span class="line-number">{{ match.line_number }}</span>
+                <span class="line-content" v-html="highlightMatch(match.line_content, match.matched_text)"></span>
               </div>
             </div>
           </div>
@@ -113,10 +116,21 @@ const isSearching = ref(false);
 const searchResults = ref<SearchResult[]>([]);
 const hasSearched = ref(false);
 const repoPath = ref('');
+const expandedFiles = ref<boolean[]>([]);
 
 const totalMatches = computed(() => {
   return searchResults.value.reduce((sum, result) => sum + result.match_count, 0);
 });
+
+// 切换展开/折叠
+const toggleExpand = (index: number) => {
+  expandedFiles.value[index] = !expandedFiles.value[index];
+};
+
+// 打开文件
+const openFile = (path: string) => {
+  emit('open-file', path);
+};
 
 // 打开搜索对话框
 const open = (path: string) => {
@@ -397,12 +411,6 @@ defineExpose({
 
 .result-item {
   border-bottom: 1px solid var(--border-color);
-  cursor: pointer;
-  transition: background-color 0.2s;
-}
-
-.result-item:hover {
-  background-color: var(--bg-hover);
 }
 
 .result-file {
@@ -413,10 +421,32 @@ defineExpose({
   font-weight: 500;
   color: var(--text-primary);
   border-bottom: 1px solid var(--border-color);
+  cursor: pointer;
+}
+
+.result-file:hover {
+  background-color: var(--bg-hover);
+}
+
+.expand-icon {
+  font-size: 12px;
+  color: var(--text-secondary);
+  transition: transform 0.2s;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex-shrink: 0;
+}
+
+.expand-icon.expanded {
+  transform: rotate(90deg);
 }
 
 .file-icon {
   font-size: 16px;
+  cursor: pointer;
 }
 
 .file-path {
@@ -426,6 +456,7 @@ defineExpose({
   text-overflow: ellipsis;
   white-space: nowrap;
   font-weight: 500;
+  cursor: pointer;
 }
 
 .match-count-badge {
@@ -437,33 +468,46 @@ defineExpose({
   font-weight: 500;
 }
 
-.result-lines {
-  padding: 12px 20px 12px 48px;
-  background-color: var(--bg-secondary);
+.result-matches {
+  padding: 0;
 }
 
-.line-numbers {
+.match-line {
   display: flex;
-  flex-wrap: wrap;
-  gap: 8px;
-}
-
-.line-number-item {
-  background-color: var(--bg-hover);
-  color: var(--text-primary);
-  padding: 4px 10px;
-  border-radius: 4px;
-  font-size: 12px;
-  font-family: monospace;
+  padding: 6px 20px 6px 48px;
+  gap: 12px;
+  font-size: 13px;
+  line-height: 1.5;
+  border-bottom: 1px solid var(--border-color-light);
   cursor: pointer;
-  transition: all 0.2s;
-  border: 1px solid var(--border-color);
+  transition: background-color 0.2s;
 }
 
-.line-number-item:hover {
-  background-color: var(--accent-color);
-  color: white;
-  border-color: var(--accent-color);
+.match-line:hover {
+  background-color: var(--bg-hover);
+}
+
+.line-number {
+  color: var(--text-secondary);
+  font-family: monospace;
+  font-size: 12px;
+  min-width: 40px;
+  text-align: right;
+  flex-shrink: 0;
+}
+
+.line-content {
+  flex: 1;
+  font-family: monospace;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--text-primary);
+}
+
+:deep(.search-highlight) {
+  background-color: rgba(255, 235, 59, 0.5);
+  border-radius: 2px;
+  padding: 1px 2px;
 }
 
 .no-results {
