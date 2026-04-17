@@ -2152,6 +2152,34 @@ const showCompareFileDialog = () => {
   showCompareFile.value = true;
 };
 
+// 通过路径打开文件
+const openFileByPath = async (relativePath: string) => {
+  try {
+    // 获取文件内容
+    const fullPath = `${currentPath.value}/${relativePath}`;
+    const content = await invoke<string>('read_file_content', { 
+      filePath: fullPath 
+    });
+    
+    // 创建新标签
+    const tabId = `file-${Date.now()}`;
+    const newTab: Tab = {
+      id: tabId,
+      title: relativePath.split('/').pop() || relativePath,
+      path: relativePath,
+      type: 'file',
+      content: content,
+      status: undefined
+    };
+    
+    tabs.value.push(newTab);
+    activeTabId.value = tabId;
+  } catch (error) {
+    console.error('打开文件失败:', error);
+    alert('打开文件失败：' + error);
+  }
+};
+
 // 全局搜索快捷键处理
 const handleGlobalKeyDown = (event: KeyboardEvent) => {
   // Ctrl + Alt + F (Windows/Linux) 或 Cmd + Control + F (macOS)
