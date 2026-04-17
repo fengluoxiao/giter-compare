@@ -63,8 +63,9 @@
               <span class="match-count-badge">{{ result.match_count }} 处匹配</span>
             </div>
             <div v-if="expandedFiles[index]" class="result-matches">
+              <!-- 对匹配行进行去重，同一行号只显示一次 -->
               <div 
-                v-for="(match, matchIndex) in result.matches.slice(0, 10)" 
+                v-for="(match, matchIndex) in getUniqueMatches(result.matches).slice(0, 10)" 
                 :key="matchIndex"
                 class="match-line"
                 @click="openFileAtLine(result.file_path, match.line_number)"
@@ -192,6 +193,17 @@ const highlightMatch = (content: string, matchedText: string): string => {
   const escaped = matchedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(`(${escaped})`, 'gi');
   return content.replace(regex, '<span class="search-highlight">$1</span>');
+};
+
+// 获取唯一的匹配行（去重，同一行号只显示一次）
+const getUniqueMatches = (matches: SearchMatch[]): SearchMatch[] => {
+  const lineMap = new Map<number, SearchMatch>();
+  matches.forEach(match => {
+    if (!lineMap.has(match.line_number)) {
+      lineMap.set(match.line_number, match);
+    }
+  });
+  return Array.from(lineMap.values()).sort((a, b) => a.line_number - b.line_number);
 };
 
 // 获取匹配内容的上下文（前后各 80 个字符）
