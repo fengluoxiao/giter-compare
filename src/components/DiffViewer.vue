@@ -298,7 +298,9 @@ const handleJumpToLine = (event: Event) => {
   const customEvent = event as CustomEvent;
   const lineNumber = customEvent.detail as number;
   
-  if (leftCodeContent.value) {
+  console.log('跳转到行:', lineNumber);
+  
+  if (leftCodeContent.value && lineNumber) {
     const lineHeight = 24; // 假设每行高度为 24px
     const targetScrollTop = (lineNumber - 1) * lineHeight - 100;
     leftCodeContent.value.scrollTop = Math.max(0, targetScrollTop);
@@ -310,6 +312,8 @@ const handleJumpToLine = (event: Event) => {
     
     // 更新 minimap 状态
     leftScrollTop.value = leftCodeContent.value.scrollTop;
+    
+    console.log('滚动位置:', leftCodeContent.value.scrollTop);
   }
 };
 

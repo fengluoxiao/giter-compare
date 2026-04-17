@@ -2246,11 +2246,14 @@ const handleGlobalSearchOpenFile = (path: string, lineNumber?: number) => {
     // 文件在文件树中，激活差异对比
     selectFile(fileNode.path);  // 传递路径而不是节点对象
     
-    // 跳转到指定行
-    setTimeout(() => {
-      const event = new CustomEvent('jump-to-line', { detail: lineNumber });
-      window.dispatchEvent(event);
-    }, 100);
+    // 等待 DOM 更新后再跳转
+    nextTick(() => {
+      setTimeout(() => {
+        console.log('触发跳转到行:', lineNumber);
+        const event = new CustomEvent('jump-to-line', { detail: lineNumber });
+        window.dispatchEvent(event);
+      }, 200);
+    });
   } else {
     // 文件不在文件树中（可能是未跟踪的文件），打开文件查看
     openFileByPath(relativePath).then(() => {
