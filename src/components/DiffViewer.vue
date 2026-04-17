@@ -9,16 +9,16 @@
       </div>
     </div>
 
-    <!-- Inline Search -->
-    <InlineSearch
-      v-if="currentFile && !isBinary"
-      ref="inlineSearch"
-      :content="combinedContent"
-      @close="handleSearchClose"
-      @highlight-match="handleHighlightMatch"
-    />
-
     <div v-if="currentFile" class="diff-content">
+      <!-- Inline Search -->
+      <InlineSearch
+        v-if="!isBinary"
+        ref="inlineSearch"
+        :content="combinedContent"
+        @close="handleSearchClose"
+        @highlight-match="handleHighlightMatch"
+      />
+      
       <div v-if="isBinary" class="binary-placeholder">
         [二进制文件]
       </div>
@@ -76,7 +76,13 @@
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue';
 import ShikiDiffLines from './ShikiDiffLines.vue';
 import Minimap from './Minimap.vue';
-import InlineSearch, { type SearchMatch } from './InlineSearch.vue';
+import InlineSearch from './InlineSearch.vue';
+
+interface SearchMatch {
+  lineIndex: number;
+  columnIndex: number;
+  text: string;
+}
 
 interface FileNode {
   name: string;
