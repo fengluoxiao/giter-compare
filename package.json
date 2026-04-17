@@ -21,6 +21,7 @@
     "monaco-textmate": "^3.0.1",
     "shiki": "^4.0.2",
     "tauri-plugin-liquid-glass-api": "^0.1.6",
+    "tauri-plugin-native-macos-ui": "file:../tauri-plugin-native-macos-ui/guest-js",
     "vscode-oniguruma": "^2.0.1",
     "vue": "^3.5.32",
     "vue-router": "^4.6.4"

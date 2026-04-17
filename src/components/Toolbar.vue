@@ -1,46 +1,32 @@
 <template>
-  <div class="toolbar">
-    <div class="toolbar-left">
-      <button class="btn btn-secondary" @click="$emit('compare-file')">
-        <span class="btn-icon">📄</span>
-        比对文件
+  <div class="toolbar-container">
+    <div class="swiftui-test-buttons">
+      <button class="test-btn" @click="testSwiftUIPanel" title="测试 SwiftUI 面板">
+        <span class="icon">🍎</span>
+        <span class="label">SwiftUI</span>
       </button>
-      <button class="btn btn-secondary" @click="$emit('compare-text')">
-        <span class="btn-icon">📝</span>
-        比对文本
+      <button class="test-btn" @click="testNativeAlert" title="测试原生警告">
+        <span class="icon">⚠️</span>
+        <span class="label">警告</span>
       </button>
-    </div>
-    <div class="toolbar-right">
-      <button class="btn btn-secondary" @click="$emit('manage-workspace')" title="工作区管理">
-        💼 工作区
-      </button>
-      <button class="btn btn-secondary" @click="$emit('manage-plugins')" title="语法高亮插件">
-        🔌 插件
-      </button>
-      <button class="btn btn-secondary" @click="$emit('toggle-theme')" title="切换主题">
-        {{ theme === 'dark' ? '☀️ 浅色' : '🌙 深色' }}
-      </button>
-      <button class="btn btn-secondary" @click="$emit('navigate-prev')" title="上一个" :disabled="!hasPrev">
-        ⬆️ 上一个
-      </button>
-      <button class="btn btn-secondary" @click="$emit('navigate-next')" title="下一个" :disabled="!hasNext">
-        ⬇️ 下一个
-      </button>
-      <button class="btn btn-secondary" @click="$emit('refresh', $event)" title="刷新 (Shift+ 点击强制刷新)">
-        🔄 刷新
+      <button class="test-btn" @click="testConfirm" title="测试确认对话框">
+        <span class="icon">❓</span>
+        <span class="label">确认</span>
       </button>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-defineProps<{
+import { openSwiftUIPanel, showNativeAlert, showConfirm, showInfo } from '../utils/swiftuiNative';
+
+const props = defineProps<{
   theme: string;
   hasPrev: boolean;
   hasNext: boolean;
 }>();
 
-defineEmits<{
+const emit = defineEmits<{
   'compare-file': [];
   'compare-text': [];
   'toggle-theme': [];
@@ -50,23 +36,115 @@ defineEmits<{
   'manage-plugins': [];
   'manage-workspace': [];
 }>();
+
+// 测试 SwiftUI 面板
+const testSwiftUIPanel = async () => {
+  try {
+    const result = await openSwiftUIPanel({
+      content: '这是从 Web 前端传递的内容！\n\nSwiftUI 原生面板可以显示丰富的内容。',
+      title: 'SwiftUI 原生面板测试',
+      buttonText: '点击回调前端'
+    });
+    console.log('面板返回结果:', result);
+    await showInfo(`用户操作: ${result.status}`, '回调结果');
+  } catch (error) {
+    console.error('测试失败:', error);
+  }
+};
+
+// 测试原生警告
+const testNativeAlert = async () => {
+  try {
+    const result = await showNativeAlert({
+      title: '原生 SwiftUI 警告',
+      message: '这是一个使用 SwiftUI 构建的原生警告弹窗，支持 macOS 和 iOS 平台。',
+      buttonText: '我知道了'
+    });
+    console.log('警告返回结果:', result);
+  } catch (error) {
+    console.error('测试失败:', error);
+  }
+};
+
+// 测试确认对话框
+const testConfirm = async () => {
+  try {
+    const confirmed = await showConfirm(
+      '确定要执行此操作吗？此操作不可撤销。',
+      '请确认'
+    );
+    if (confirmed) {
+      await showInfo('用户点击了确认', '结果');
+    } else {
+      await showInfo('用户取消了操作', '结果');
+    }
+  } catch (error) {
+    console.error('测试失败:', error);
+  }
+};
 </script>
 
 <style scoped>
-.toolbar {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 8px 12px;
-  background-color: var(--bg-secondary);
-  border-bottom: 1px solid var(--border-color);
-  gap: 12px;
+.toolbar-container {
+  height: auto;
+  padding: 8px 16px;
+  background: var(--bg-secondary, #f5f5f5);
+  border-bottom: 1px solid var(--border-color, #e0e0e0);
 }
 
-.toolbar-left,
-.toolbar-right {
+.swiftui-test-buttons {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+}
+
+.test-btn {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-color, #d0d0d0);
+  border-radius: 6px;
+  background: var(--bg-primary, #ffffff);
+  color: var(--text-primary, #333333);
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.2s ease;
+}
+
+.test-btn:hover {
+  background: var(--bg-hover, #e8e8e8);
+  border-color: var(--border-hover, #b0b0b0);
+}
+
+.test-btn:active {
+  transform: scale(0.98);
+}
+
+.test-btn .icon {
+  font-size: 14px;
+}
+
+.test-btn .label {
+  font-weight: 500;
+}
+
+/* 暗色主题适配 */
+@media (prefers-color-scheme: dark) {
+  .toolbar-container {
+    background: var(--bg-secondary, #2d2d2d);
+    border-bottom-color: var(--border-color, #3d3d3d);
+  }
+
+  .test-btn {
+    background: var(--bg-primary, #3d3d3d);
+    border-color: var(--border-color, #4d4d4d);
+    color: var(--text-primary, #e0e0e0);
+  }
+
+  .test-btn:hover {
+    background: var(--bg-hover, #4d4d4d);
+    border-color: var(--border-hover, #5d5d5d);
+  }
 }
 </style>
