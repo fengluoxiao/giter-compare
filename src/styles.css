@@ -1167,3 +1167,85 @@ body {
 .sync-scroll {
   scroll-behavior: smooth;
 }
+
+/* ==================== 液态玻璃效果 ==================== */
+
+/* macOS Liquid Glass 效果支持 */
+@supports (-webkit-backdrop-filter: blur(20px)) or (backdrop-filter: blur(20px)) {
+  .liquid-glass {
+    background: rgba(30, 30, 30, 0.65) !important;
+    -webkit-backdrop-filter: blur(20px) saturate(180%);
+    backdrop-filter: blur(20px) saturate(180%);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+  }
+
+  [data-theme="light"] .liquid-glass {
+    background: rgba(255, 255, 255, 0.75) !important;
+    border: 1px solid rgba(0, 0, 0, 0.08);
+  }
+}
+
+/* Windows Mica 效果支持 */
+@supports (-webkit-backdrop-filter: blur(16px)) or (backdrop-filter: blur(16px)) {
+  .mica-blur {
+    background: rgba(32, 32, 32, 0.85) !important;
+    -webkit-backdrop-filter: blur(16px);
+    backdrop-filter: blur(16px);
+  }
+
+  [data-theme="light"] .mica-blur {
+    background: rgba(243, 243, 243, 0.9) !important;
+  }
+}
+
+/* 工具栏液态玻璃效果 */
+.toolbar.liquid-glass,
+.toolbar.mica-blur {
+  background-color: transparent !important;
+  border-bottom-color: rgba(255, 255, 255, 0.1);
+}
+
+/* 侧边栏液态玻璃效果 */
+.sidebar.liquid-glass,
+.project-sidebar.liquid-glass,
+.sidebar.mica-blur,
+.project-sidebar.mica-blur {
+  background-color: transparent !important;
+  border-right-color: rgba(255, 255, 255, 0.1);
+}
+
+/* 对话框液态玻璃效果 */
+.dialog-content.liquid-glass,
+.dialog-content.mica-blur {
+  background-color: rgba(37, 37, 38, 0.9) !important;
+  box-shadow: 0 25px 50px -12px rgba(0, 0, 0, 0.5);
+}
+
+/* 代码区域保持不透明（便于阅读） */
+.code-content {
+  background-color: var(--bg-primary) !important;
+}
+
+/* 全局搜索对话框液态玻璃 */
+.global-search-dialog.liquid-glass,
+.global-search-dialog.mica-blur {
+  background-color: rgba(30, 30, 30, 0.95) !important;
+}
+
+/* 上下文菜单液态玻璃 */
+.context-menu.liquid-glass,
+.context-menu.mica-blur {
+  background-color: rgba(37, 37, 38, 0.95) !important;
+  box-shadow: 0 10px 40px rgba(0, 0, 0, 0.4);
+}
+
+/* 透明窗口模式下的特殊处理 */
+.transparent-window .toolbar,
+.transparent-window .sidebar,
+.transparent-window .project-sidebar {
+  background-color: transparent !important;
+}
+
+.transparent-window .code-content {
+  background-color: var(--bg-primary) !important;
+}

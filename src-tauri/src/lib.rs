@@ -1089,13 +1089,14 @@ fn open_in_explorer(path: String) -> Result<(), String> {
 
 pub fn run() {
     let file_watcher = Arc::new(Mutex::new(FileWatcher::new()));
-    
+
     tauri::Builder::default()
         .manage(file_watcher)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
         .plugin(tauri_plugin_shell::init())
+        .plugin(tauri_plugin_liquid_glass::init())
         .invoke_handler(tauri::generate_handler![
             get_git_diff,
             get_file_diff,
@@ -1123,6 +1124,29 @@ pub fn run() {
             search::search_in_file,
             search::search_in_directory
         ])
+        .setup(|app| {
+            // 设置窗口效果
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    // 使用 tauri-plugin-liquid-class 设置液态玻璃效果
+                    // macOS 14+ 支持液态玻璃效果
+                    let _ = window.set_title_bar_style(tauri::TitleBarStyle::Transparent);
+                }
+            }
+
+            #[cfg(target_os = "windows")]
+            {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    // Windows 11 支持云母/亚克力效果
+                    let _ = window.set_decorations(true);
+                }
+            }
+
+            Ok(())
+        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }
