@@ -285,6 +285,12 @@ onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
 });
 
+// 监听文件变化，关闭搜索
+watch(() => props.currentFile, () => {
+  // 切换文件时关闭搜索
+  inlineSearch.value?.closeSearch();
+});
+
 // 监听线条变化，更新 minimap 尺寸
 watch(() => props.leftLines, () => {
   nextTick(() => {
