@@ -25,11 +25,11 @@
       <template v-else>
         <div class="diff-pane">
           <div class="pane-header">
-            <span class="pane-title">文件内容</span>
+            <span class="pane-title">{{ isFileViewMode ? '文件内容' : 'HEAD' }}</span>
           </div>
           <div class="code-content" ref="leftCodeContent" @scroll="syncScroll('left')">
             <ShikiDiffLines 
-              :lines="leftLines" 
+              :lines="isFileViewMode ? leftLines : rightLines" 
               :filename="currentFile?.path || ''"
               :theme="theme || 'light'"
               :search-matches="leftSearchMatches"
@@ -40,11 +40,11 @@
         <div class="diff-divider"></div>
         <div class="diff-pane">
           <div class="pane-header">
-            <span class="pane-title">文件内容</span>
+            <span class="pane-title">{{ isFileViewMode ? '文件内容' : (viewMode === 'working' ? '工作区' : '暂存区') }}</span>
           </div>
           <div class="code-content" ref="rightCodeContent" @scroll="syncScroll('right')">
             <ShikiDiffLines 
-              :lines="rightLines" 
+              :lines="isFileViewMode ? rightLines : leftLines" 
               :filename="currentFile?.path || ''"
               :theme="theme || 'light'"
               :search-matches="rightSearchMatches"
@@ -119,6 +119,11 @@ const props = defineProps<{
   viewMode: 'working' | 'staged';
   theme?: 'light' | 'dark';
 }>();
+
+// 判断是否是文件查看模式（通过检查文件状态是否为空）
+const isFileViewMode = computed(() => {
+  return props.currentFile && !props.currentFile.status;
+});
 
 const emit = defineEmits<{
   'scroll': [scrollTop: number];
