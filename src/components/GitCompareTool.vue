@@ -378,28 +378,35 @@ onMounted(async () => {
   window.addEventListener('keydown', handleGlobalKeyDown);
 
   unlistenFileChange = await listen('file-changed', (event: any) => {
-    if (currentPath.value) {
-      // 检查是否是结构变化（新增/删除文件或文件夹）
-      const payload = event.payload;
-      const isStructuralChange = payload?.is_structural_change === true;
-      const changedFilePath = payload?.path;
-      
-      if (isStructuralChange) {
-        // 文件结构变化，清除当前项目的文件树缓存
-        clearFileTreeCache(currentPath.value);
-      }
-      
-      // 清除变更文件的 diff 缓存
-      if (changedFilePath) {
-        const diffCacheKey = getDiffCacheKey(currentPath.value, changedFilePath);
-        if (diffCache.value.has(diffCacheKey)) {
-          diffCache.value.delete(diffCacheKey);
-          console.log('Cleared diff cache for changed file:', changedFilePath);
-        }
-      }
-      
-      refresh();
+    console.log('File changed event received:', event.payload);
+    // 检查是否是结构变化（新增/删除文件或文件夹）
+    const payload = event.payload;
+    const isStructuralChange = payload?.is_structural_change === true;
+    const changedFilePath = payload?.path;
+    const eventRepoPath = payload?.repo_path;
+    
+    // 只有当事件来自当前项目时才处理
+    if (eventRepoPath && eventRepoPath !== currentPath.value) {
+      console.log('Event from different project, ignoring');
+      return;
     }
+    
+    if (isStructuralChange && currentPath.value) {
+      // 文件结构变化，清除当前项目的文件树缓存
+      clearFileTreeCache(currentPath.value);
+    }
+    
+    // 清除变更文件的 diff 缓存
+    if (changedFilePath && currentPath.value) {
+      const diffCacheKey = getDiffCacheKey(currentPath.value, changedFilePath);
+      if (diffCache.value.has(diffCacheKey)) {
+        diffCache.value.delete(diffCacheKey);
+        console.log('Cleared diff cache for changed file:', changedFilePath);
+      }
+    }
+    
+    // 无论是否有 currentPath，都尝试刷新
+    refresh();
   });
 });
 

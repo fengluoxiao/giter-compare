@@ -104,7 +104,7 @@
           <div class="preview-content">
             <div class="diff-view">
               <div class="diff-pane">
-                <div class="code-content" ref="oldCodeContent">
+                <div class="code-content" ref="oldCodeContent" @scroll="syncScroll('left')">
                   <div v-if="oldLines.length === 0" class="empty-content">无内容</div>
                   <div 
                     v-for="(line, idx) in oldLines" 
@@ -115,14 +115,14 @@
                       'search-match': isSearchMatchLine(line.lineNum, 'old')
                     }"
                   >
-                    <span class="line-num">{{ line.lineNum }}</span>
+                    <span class="line-num">{{ line.lineNum || '' }}</span>
                     <span class="line-text" :class="line.changeType">{{ line.content }}</span>
                   </div>
                 </div>
               </div>
               <div class="diff-divider"></div>
               <div class="diff-pane">
-                <div class="code-content" ref="newCodeContent">
+                <div class="code-content" ref="newCodeContent" @scroll="syncScroll('right')">
                   <div v-if="newLines.length === 0" class="empty-content">无内容</div>
                   <div 
                     v-for="(line, idx) in newLines" 
@@ -133,7 +133,7 @@
                       'search-match': isSearchMatchLine(line.lineNum, 'new')
                     }"
                   >
-                    <span class="line-num">{{ line.lineNum }}</span>
+                    <span class="line-num">{{ line.lineNum || '' }}</span>
                     <span class="line-text" :class="line.changeType">{{ line.content }}</span>
                   </div>
                 </div>
@@ -250,20 +250,16 @@ const selectMatch = async (fileIndex: number, matchIndex: number, match: SearchM
     showPreview.value = true;
     // 加载文件差异
     await loadFileDiff(result.file_path);
-    // 在加载完差异后，根据匹配内容找到实际的行号
+    // 在加载完差异后，使用搜索结果的行号直接高亮
+    // 因为搜索结果是基于文件当前内容的行号，与 oldLines 的行号一致
     nextTick(() => {
-      // 在新版本（newLines）中查找匹配的行
-      const actualLineIndex = newLines.value.findIndex(line => 
-        line.content.includes(match.matched_text)
-      );
-      const actualLineNum = actualLineIndex !== -1 
-        ? newLines.value[actualLineIndex].lineNum 
-        : match.line_number;
+      // 直接使用搜索结果的行号
+      const lineNum = match.line_number;
       
-      // 高亮对应的行
-      highlightedLine.value = { lineNum: actualLineNum, side: 'new' };
-      // 滚动到对应位置
-      scrollToLine(actualLineNum);
+      // 高亮对应的行（在左边旧版本中）
+      highlightedLine.value = { lineNum, side: 'old' };
+      // 滚动到对应位置（滚动左边旧版本）
+      scrollToLine(lineNum, 'old');
     });
   }
 };
@@ -292,71 +288,189 @@ const loadFileDiff = async (filePath: string) => {
     // 处理新版本内容
     const newContentStr = newContentResult.status === 'fulfilled' ? newContentResult.value : '';
 
-    // 直接使用文件内容构建行列表，保持原始行号
-    // 新版本（工作区）
-    const newContentLines = newContentStr ? newContentStr.split('\n') : [];
-    // 旧版本（HEAD）
-    const oldContentLines = oldContentStr ? oldContentStr.split('\n') : [];
-
-    // 使用 compare_strings 获取差异信息
+    // 使用 compare_strings 获取差异对齐
     const diffResult = await invoke<FileDiff>('compare_strings', {
       oldContent: oldContentStr,
       newContent: newContentStr
     });
 
-    // 构建变更标记集合
-    const changedLinesInNew = new Set<number>(); // 新版本中变更的行号（1-based）
-    const changedLinesInOld = new Set<number>(); // 旧版本中变更的行号（1-based）
+    // 根据 hunks 对齐行号
+    // 与主窗口保持一致：左边显示旧版本（rightLines），右边显示新版本（leftLines）
+    const alignedLeftLines: DiffLine[] = [];  // 新版本（工作区）- 显示在右边
+    const alignedRightLines: DiffLine[] = []; // 旧版本（HEAD）- 显示在左边
+
+    let leftLineNum = 1;  // 新版本行号
+    let rightLineNum = 1; // 旧版本行号
 
     diffResult.hunks.forEach(hunk => {
-      let oldLineCounter = hunk.old_start;
-      let newLineCounter = hunk.new_start;
+      // 添加上下文行 - hunk.old_start 和 hunk.new_start 是 1-based 行号
+      const contextStart = Math.min(hunk.old_start, hunk.new_start) - 1;
+      for (let i = alignedLeftLines.length; i < contextStart; i++) {
+        const oldContent = diffResult.old_content[i] || '';
+        const newContent = diffResult.new_content[i] || '';
+
+        // 右边显示新版本
+        alignedLeftLines.push({
+          lineNum: leftLineNum++,
+          content: newContent,
+          changeType: 'unchanged',
+          isDiff: false
+        });
+        // 左边显示旧版本
+        alignedRightLines.push({
+          lineNum: rightLineNum++,
+          content: oldContent,
+          changeType: 'unchanged',
+          isDiff: false
+        });
+      }
+
+      let pendingRemoved: { content: string; lineNum: number } | null = null;
 
       hunk.lines.forEach(line => {
         if (line.change_type === 'removed') {
-          changedLinesInOld.add(oldLineCounter);
-          oldLineCounter++;
+          // 旧版本中删除的行
+          pendingRemoved = { content: line.content, lineNum: rightLineNum++ };
         } else if (line.change_type === 'added') {
-          changedLinesInNew.add(newLineCounter);
-          newLineCounter++;
+          if (pendingRemoved) {
+            // 修改的行：右边（新版本）显示新内容，左边（旧版本）显示旧内容
+            alignedLeftLines.push({
+              lineNum: leftLineNum++,
+              content: line.content,
+              changeType: 'changed',
+              isDiff: true
+            });
+            alignedRightLines.push({
+              lineNum: pendingRemoved.lineNum,
+              content: pendingRemoved.content,
+              changeType: 'changed',
+              isDiff: true
+            });
+            pendingRemoved = null;
+          } else {
+            // 新增的行：只在新版本中
+            alignedLeftLines.push({
+              lineNum: leftLineNum++,
+              content: line.content,
+              changeType: 'added',
+              isDiff: true
+            });
+            alignedRightLines.push({
+              lineNum: 0,
+              content: '',
+              changeType: 'empty',
+              isDiff: false
+            });
+          }
         } else {
-          // 上下文行
-          oldLineCounter++;
-          newLineCounter++;
+          // 未修改的行
+          if (pendingRemoved) {
+            // 处理挂起的删除行
+            alignedLeftLines.push({
+              lineNum: 0,
+              content: '',
+              changeType: 'empty',
+              isDiff: false
+            });
+            alignedRightLines.push({
+              lineNum: pendingRemoved.lineNum,
+              content: pendingRemoved.content,
+              changeType: 'removed',
+              isDiff: true
+            });
+            pendingRemoved = null;
+          }
+
+          // 添加未修改的行
+          alignedLeftLines.push({
+            lineNum: leftLineNum++,
+            content: line.content,
+            changeType: 'unchanged',
+            isDiff: false
+          });
+          alignedRightLines.push({
+            lineNum: rightLineNum++,
+            content: line.content,
+            changeType: 'unchanged',
+            isDiff: false
+          });
         }
       });
+
+      // 处理最后挂起的删除行
+      if (pendingRemoved) {
+        alignedLeftLines.push({
+          lineNum: 0,
+          content: '',
+          changeType: 'empty',
+          isDiff: false
+        });
+        alignedRightLines.push({
+          lineNum: pendingRemoved.lineNum,
+          content: pendingRemoved.content,
+          changeType: 'removed',
+          isDiff: true
+        });
+      }
     });
 
-    // 构建左侧面板（新版本）的行数据
-    const leftLines: DiffLine[] = newContentLines.map((content, idx) => {
-      const lineNum = idx + 1;
-      const isChanged = changedLinesInNew.has(lineNum);
-      return {
-        lineNum,
-        content,
-        changeType: isChanged ? 'added' : 'unchanged',
-        isDiff: isChanged
-      };
-    });
+    // 添加剩余的上下文行
+    const maxLines = Math.max(diffResult.old_content.length, diffResult.new_content.length);
+    for (let i = alignedLeftLines.length; i < maxLines; i++) {
+      const oldContent = diffResult.old_content[i] || '';
+      const newContent = diffResult.new_content[i] || '';
 
-    // 构建右侧面板（旧版本）的行数据
-    const rightLines: DiffLine[] = oldContentLines.map((content, idx) => {
-      const lineNum = idx + 1;
-      const isChanged = changedLinesInOld.has(lineNum);
-      return {
-        lineNum,
-        content,
-        changeType: isChanged ? 'removed' : 'unchanged',
-        isDiff: isChanged
-      };
-    });
+      if (oldContent && !newContent) {
+        // 只有旧版本有，新版本没有 = 删除
+        alignedLeftLines.push({
+          lineNum: 0,
+          content: '',
+          changeType: 'empty',
+          isDiff: false
+        });
+        alignedRightLines.push({
+          lineNum: rightLineNum++,
+          content: oldContent,
+          changeType: 'removed',
+          isDiff: true
+        });
+      } else if (!oldContent && newContent) {
+        // 只有新版本有，旧版本没有 = 新增
+        alignedLeftLines.push({
+          lineNum: leftLineNum++,
+          content: newContent,
+          changeType: 'added',
+          isDiff: true
+        });
+        alignedRightLines.push({
+          lineNum: 0,
+          content: '',
+          changeType: 'empty',
+          isDiff: false
+        });
+      } else if (oldContent && newContent) {
+        // 两边都有
+        alignedLeftLines.push({
+          lineNum: leftLineNum++,
+          content: newContent,
+          changeType: 'unchanged',
+          isDiff: false
+        });
+        alignedRightLines.push({
+          lineNum: rightLineNum++,
+          content: oldContent,
+          changeType: 'unchanged',
+          isDiff: false
+        });
+      }
+    }
 
     // 与主窗口保持一致：
     // 主窗口左边显示 rightLines（旧版本），右边显示 leftLines（新版本）
     // 全局搜索弹窗左边显示 oldLines，右边显示 newLines
-    // 所以：oldLines = rightLines（旧版本），newLines = leftLines（新版本）
-    oldLines.value = rightLines;  // 旧版本内容，显示在左边
-    newLines.value = leftLines;   // 新版本内容，显示在右边
+    // 所以：oldLines = alignedRightLines（旧版本），newLines = alignedLeftLines（新版本）
+    oldLines.value = alignedRightLines;  // 旧版本内容，显示在左边
+    newLines.value = alignedLeftLines;   // 新版本内容，显示在右边
 
   } catch (error) {
     console.error('加载文件差异失败:', error);
@@ -366,17 +480,44 @@ const loadFileDiff = async (filePath: string) => {
 };
 
 // 滚动到指定行
-const scrollToLine = (lineNum: number) => {
-  if (newCodeContent.value) {
-    const lineHeight = 20;
-    const targetScrollTop = (lineNum - 1) * lineHeight - 100;
+const scrollToLine = (lineNum: number, side: 'old' | 'new' = 'old') => {
+  const lineHeight = 20;
+  const targetScrollTop = (lineNum - 1) * lineHeight - 100;
+
+  if (side === 'old' && oldCodeContent.value) {
+    oldCodeContent.value.scrollTop = Math.max(0, targetScrollTop);
+    // 同步右侧滚动
+    if (newCodeContent.value) {
+      newCodeContent.value.scrollTop = oldCodeContent.value.scrollTop;
+    }
+  } else if (side === 'new' && newCodeContent.value) {
     newCodeContent.value.scrollTop = Math.max(0, targetScrollTop);
-    
     // 同步左侧滚动
     if (oldCodeContent.value) {
       oldCodeContent.value.scrollTop = newCodeContent.value.scrollTop;
     }
   }
+};
+
+// 同步滚动
+let isScrolling = false;
+const syncScroll = (source: 'left' | 'right') => {
+  if (isScrolling) return;
+  isScrolling = true;
+
+  const sourceEl = source === 'left' ? oldCodeContent.value : newCodeContent.value;
+  const targetEl = source === 'left' ? newCodeContent.value : oldCodeContent.value;
+
+  if (sourceEl && targetEl) {
+    // 同步纵向滚动
+    targetEl.scrollTop = sourceEl.scrollTop;
+    // 同步横向滚动
+    targetEl.scrollLeft = sourceEl.scrollLeft;
+  }
+
+  setTimeout(() => {
+    isScrolling = false;
+  }, 50);
 };
 
 // 检查行是否高亮
@@ -977,6 +1118,7 @@ defineExpose({
   display: flex;
   padding: 0 8px;
   white-space: pre;
+  min-height: 20px;
 }
 
 .code-line:hover {
@@ -1014,5 +1156,9 @@ defineExpose({
 
 .line-text.changed {
   background-color: rgba(33, 150, 243, 0.2);
+}
+
+.line-text.empty {
+  background-color: transparent;
 }
 </style>
