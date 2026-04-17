@@ -70,7 +70,7 @@
                 @click="openFileAtLine(result.file_path, match.line_number)"
               >
                 <span class="line-number">{{ match.line_number }}</span>
-                <span class="line-content" v-html="highlightMatch(match.line_content, match.matched_text)"></span>
+                <span class="match-text" v-html="highlightMatch(match.line_content, match.matched_text)"></span>
               </div>
               <div v-if="result.matches.length > 10" class="more-matches">
                 还有 {{ result.matches.length - 10 }} 个匹配，请打开文件查看
@@ -187,11 +187,26 @@ const openFileAtLine = (path: string, lineNumber: number) => {
   emit('open-file', path, lineNumber);
 };
 
-// 高亮匹配文本
+// 高亮匹配文本（只显示匹配内容）
 const highlightMatch = (content: string, matchedText: string): string => {
+  // 直接使用匹配的文本，不显示整行
   const escaped = matchedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  const regex = new RegExp(`(${escaped})`, 'gi');
-  return content.replace(regex, '<span class="search-highlight">$1</span>');
+  return `<span class="search-highlight">${escaped}</span>`;
+};
+
+// 获取匹配内容的上下文（前后各 50 个字符）
+const getContextAroundMatch = (content: string, matchedText: string, contextLength: number = 50): string => {
+  const index = content.toLowerCase().indexOf(matchedText.toLowerCase());
+  if (index === -1) return matchedText;
+  
+  const start = Math.max(0, index - contextLength);
+  const end = Math.min(content.length, index + matchedText.length + contextLength);
+  
+  let result = content.substring(start, end);
+  if (start > 0) result = '...' + result;
+  if (end < content.length) result = result + '...';
+  
+  return result;
 };
 
 // 获取相对路径
@@ -479,8 +494,6 @@ defineExpose({
   border-bottom: 1px solid var(--border-color-light);
   cursor: pointer;
   transition: background-color 0.2s;
-  max-height: 200px;
-  overflow: hidden;
 }
 
 .match-line:hover {
@@ -496,17 +509,14 @@ defineExpose({
   flex-shrink: 0;
 }
 
-.line-content {
+.match-text {
   flex: 1;
   font-family: monospace;
-  white-space: pre-wrap;
-  word-break: break-all;
+  font-size: 13px;
   color: var(--text-primary);
+  white-space: nowrap;
   overflow: hidden;
   text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 3;
-  -webkit-box-orient: vertical;
 }
 
 :deep(.search-highlight) {
