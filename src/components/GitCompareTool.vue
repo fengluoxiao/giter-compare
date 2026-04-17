@@ -2161,15 +2161,28 @@ const openFileByPath = async (relativePath: string) => {
       filePath: fullPath 
     });
     
+    // 将内容按行分割
+    const lines = content.split('\n').map((line, index) => ({
+      lineNum: index + 1,
+      content: line,
+      changeType: 'same',
+      isDiff: false
+    }));
+    
     // 创建新标签
     const tabId = `file-${Date.now()}`;
     const newTab: Tab = {
       id: tabId,
-      title: relativePath.split('/').pop() || relativePath,
+      name: relativePath.split('/').pop() || relativePath,
       path: relativePath,
-      type: 'file',
-      content: content,
-      status: undefined
+      projectPath: currentPath.value || '',
+      fileType: 'file',
+      isModified: false,
+      leftLines: lines,
+      rightLines: lines,
+      isBinary: false,
+      diffStats: { additions: 0, deletions: 0 },
+      scrollTop: 0
     };
     
     tabs.value.push(newTab);
