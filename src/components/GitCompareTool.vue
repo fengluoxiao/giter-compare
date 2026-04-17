@@ -2243,22 +2243,21 @@ const handleGlobalSearchOpenFile = (path: string, lineNumber?: number, searchTex
   const fileNode = findFileInTree(fileTree.value, relativePath);
   
   if (fileNode) {
-    // 文件在文件树中，直接打开文件查看（不是差异对比）
-    // 这样全局搜索的行号和实际显示的行号完全一致
-    openFileByPath(relativePath).then(() => {
-      // 等待文件加载完成后跳转
-      nextTick(() => {
-        setTimeout(() => {
-          console.log('触发跳转到行:', lineNumber, '搜索词:', searchText);
-          const event = new CustomEvent('jump-to-line', { 
-            detail: { 
-              lineNumber,
-              searchText
-            } 
-          });
-          window.dispatchEvent(event);
-        }, 200);
-      });
+    // 文件在文件树中，激活差异对比
+    selectFile(fileNode.path);
+    
+    // 等待差异对比加载完成后跳转
+    nextTick(() => {
+      setTimeout(() => {
+        console.log('触发跳转到行:', lineNumber, '搜索词:', searchText);
+        const event = new CustomEvent('jump-to-line', { 
+          detail: { 
+            lineNumber,
+            searchText
+          } 
+        });
+        window.dispatchEvent(event);
+      }, 300);
     });
   } else {
     // 文件不在文件树中（可能是未跟踪的文件），打开文件查看

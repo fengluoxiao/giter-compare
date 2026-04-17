@@ -307,21 +307,23 @@ const handleJumpToLine = (event: Event) => {
     const lineHeight = 24; // 假设每行高度为 24px
     const containerHeight = leftCodeContent.value.clientHeight;
     
-    // 如果有搜索词，尝试在 leftLines 中搜索匹配的文本
+    // 在差异对比视图中搜索匹配的文本
     let targetLineIndex = lineNumber - 1; // 默认使用原始行号
+    let foundMatch = false;
     
     if (searchText && props.leftLines.length > 0) {
-      // 在 leftLines 中搜索包含 searchText 的行
+      // 在 leftLines（新版本）中搜索包含 searchText 的行
       const searchRegex = new RegExp(searchText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'), 'i');
       
-      // 从原始行号附近开始搜索，找到最近的匹配
-      for (let offset = 0; offset < 20; offset++) {
-        // 检查当前行
+      // 从原始行号附近开始搜索，找到最近的匹配（±50 行范围）
+      for (let offset = 0; offset < 50; offset++) {
+        // 检查下方行
         if (lineNumber - 1 + offset < props.leftLines.length) {
           const line = props.leftLines[lineNumber - 1 + offset];
           if (line && searchRegex.test(line.content)) {
             targetLineIndex = lineNumber - 1 + offset;
-            console.log('找到匹配行:', targetLineIndex + 1);
+            foundMatch = true;
+            console.log('在新版本找到匹配行:', targetLineIndex + 1);
             break;
           }
         }
@@ -330,8 +332,33 @@ const handleJumpToLine = (event: Event) => {
           const line = props.leftLines[lineNumber - 1 - offset];
           if (line && searchRegex.test(line.content)) {
             targetLineIndex = lineNumber - 1 - offset;
-            console.log('找到匹配行:', targetLineIndex + 1);
+            foundMatch = true;
+            console.log('在新版本找到匹配行:', targetLineIndex + 1);
             break;
+          }
+        }
+      }
+      
+      // 如果新版本没找到，尝试在 rightLines（旧版本）中搜索
+      if (!foundMatch && props.rightLines.length > 0) {
+        for (let offset = 0; offset < 50; offset++) {
+          if (lineNumber - 1 + offset < props.rightLines.length) {
+            const line = props.rightLines[lineNumber - 1 + offset];
+            if (line && searchRegex.test(line.content)) {
+              targetLineIndex = lineNumber - 1 + offset;
+              foundMatch = true;
+              console.log('在旧版本找到匹配行:', targetLineIndex + 1);
+              break;
+            }
+          }
+          if (lineNumber - 1 - offset >= 0 && offset > 0) {
+            const line = props.rightLines[lineNumber - 1 - offset];
+            if (line && searchRegex.test(line.content)) {
+              targetLineIndex = lineNumber - 1 - offset;
+              foundMatch = true;
+              console.log('在旧版本找到匹配行:', targetLineIndex + 1);
+              break;
+            }
           }
         }
       }
