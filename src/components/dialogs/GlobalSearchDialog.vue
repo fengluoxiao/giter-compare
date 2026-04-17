@@ -55,21 +55,19 @@
           >
             <div class="result-file">
               <span class="file-icon">📄</span>
-              <span class="file-path">{{ result.file_path }}</span>
-              <span class="match-count-badge">{{ result.match_count }}</span>
+              <span class="file-path">{{ getRelativePath(result.file_path) }}</span>
+              <span class="match-count-badge">{{ result.match_count }} 处匹配</span>
             </div>
-            <div class="result-matches">
-              <div 
-                v-for="(match, matchIndex) in result.matches.slice(0, 5)" 
-                :key="matchIndex"
-                class="match-line"
-                @click.stop="openFileAtLine(result.file_path, match.line_number)"
-              >
-                <span class="line-number">{{ match.line_number }}</span>
-                <span class="line-content" v-html="highlightMatch(match.line_content, match.matched_text)"></span>
-              </div>
-              <div v-if="result.matches.length > 5" class="more-matches">
-                还有 {{ result.matches.length - 5 }} 个匹配...
+            <div class="result-lines">
+              <div class="line-numbers">
+                <span 
+                  v-for="(match, matchIndex) in getUniqueLines(result.matches)" 
+                  :key="matchIndex"
+                  class="line-number-item"
+                  @click.stop="openFileAtLine(result.file_path, match.line_number)"
+                >
+                  {{ match.line_number }}
+                </span>
               </div>
             </div>
           </div>
@@ -182,6 +180,26 @@ const highlightMatch = (content: string, matchedText: string): string => {
   const escaped = matchedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(`(${escaped})`, 'gi');
   return content.replace(regex, '<span class="search-highlight">$1</span>');
+};
+
+// 获取相对路径
+const getRelativePath = (fullPath: string): string => {
+  if (!repoPath.value) return fullPath;
+  if (fullPath.startsWith(repoPath.value)) {
+    return fullPath.substring(repoPath.value.length).replace(/^[/\\]/, '');
+  }
+  return fullPath;
+};
+
+// 获取唯一的行号（去重并排序）
+const getUniqueLines = (matches: SearchMatch[]): SearchMatch[] => {
+  const lineMap = new Map<number, SearchMatch>();
+  matches.forEach(match => {
+    if (!lineMap.has(match.line_number)) {
+      lineMap.set(match.line_number, match);
+    }
+  });
+  return Array.from(lineMap.values()).sort((a, b) => a.line_number - b.line_number);
 };
 
 // 暴露方法给父组件
@@ -407,6 +425,7 @@ defineExpose({
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  font-weight: 500;
 }
 
 .match-count-badge {
@@ -418,50 +437,33 @@ defineExpose({
   font-weight: 500;
 }
 
-.result-matches {
-  padding: 0;
+.result-lines {
+  padding: 12px 20px 12px 48px;
+  background-color: var(--bg-secondary);
 }
 
-.match-line {
+.line-numbers {
   display: flex;
-  padding: 6px 20px 6px 48px;
-  gap: 12px;
-  font-size: 13px;
-  line-height: 1.5;
-  border-bottom: 1px solid var(--border-color-light);
+  flex-wrap: wrap;
+  gap: 8px;
 }
 
-.match-line:hover {
+.line-number-item {
   background-color: var(--bg-hover);
-}
-
-.line-number {
-  color: var(--text-secondary);
-  font-family: monospace;
-  font-size: 12px;
-  min-width: 40px;
-  text-align: right;
-}
-
-.line-content {
-  flex: 1;
-  font-family: monospace;
-  white-space: pre-wrap;
-  word-break: break-all;
   color: var(--text-primary);
-}
-
-:deep(.search-highlight) {
-  background-color: rgba(255, 235, 59, 0.5);
-  border-radius: 2px;
-  padding: 1px 2px;
-}
-
-.more-matches {
-  padding: 8px 20px 8px 48px;
+  padding: 4px 10px;
+  border-radius: 4px;
   font-size: 12px;
-  color: var(--text-secondary);
-  font-style: italic;
+  font-family: monospace;
+  cursor: pointer;
+  transition: all 0.2s;
+  border: 1px solid var(--border-color);
+}
+
+.line-number-item:hover {
+  background-color: var(--accent-color);
+  color: white;
+  border-color: var(--accent-color);
 }
 
 .no-results {
