@@ -64,13 +64,16 @@
             </div>
             <div v-if="expandedFiles[index]" class="result-matches">
               <div 
-                v-for="(match, matchIndex) in result.matches" 
+                v-for="(match, matchIndex) in result.matches.slice(0, 10)" 
                 :key="matchIndex"
                 class="match-line"
                 @click="openFileAtLine(result.file_path, match.line_number)"
               >
                 <span class="line-number">{{ match.line_number }}</span>
                 <span class="line-content" v-html="highlightMatch(match.line_content, match.matched_text)"></span>
+              </div>
+              <div v-if="result.matches.length > 10" class="more-matches">
+                还有 {{ result.matches.length - 10 }} 个匹配，请打开文件查看
               </div>
             </div>
           </div>
@@ -503,6 +506,13 @@ defineExpose({
   background-color: rgba(255, 235, 59, 0.5);
   border-radius: 2px;
   padding: 1px 2px;
+}
+
+.more-matches {
+  padding: 8px 20px 8px 48px;
+  font-size: 12px;
+  color: var(--text-secondary);
+  font-style: italic;
 }
 
 .no-results {
