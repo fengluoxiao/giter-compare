@@ -25,11 +25,11 @@
       <template v-else>
         <div class="diff-pane">
           <div class="pane-header">
-            <span class="pane-title">HEAD</span>
+            <span class="pane-title">文件内容</span>
           </div>
           <div class="code-content" ref="leftCodeContent" @scroll="syncScroll('left')">
             <ShikiDiffLines 
-              :lines="rightLines" 
+              :lines="leftLines" 
               :filename="currentFile?.path || ''"
               :theme="theme || 'light'"
               :search-matches="leftSearchMatches"
@@ -40,11 +40,11 @@
         <div class="diff-divider"></div>
         <div class="diff-pane">
           <div class="pane-header">
-            <span class="pane-title">{{ viewMode === 'working' ? '工作区' : '暂存区' }}</span>
+            <span class="pane-title">文件内容</span>
           </div>
           <div class="code-content" ref="rightCodeContent" @scroll="syncScroll('right')">
             <ShikiDiffLines 
-              :lines="leftLines" 
+              :lines="rightLines" 
               :filename="currentFile?.path || ''"
               :theme="theme || 'light'"
               :search-matches="rightSearchMatches"
