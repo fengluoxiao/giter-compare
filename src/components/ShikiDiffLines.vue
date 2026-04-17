@@ -59,28 +59,30 @@ const isCurrentMatch = (index: number): boolean => {
 
 // 获取行内容并高亮搜索匹配项
 const getLineContent = (index: number): string => {
-  const baseContent = highlightedLines.value[index] || escapeHtml(props.lines[index]?.content || ' ');
+  const originalContent = props.lines[index]?.content || ' ';
   
   if (!props.searchMatches) {
-    return baseContent;
+    // 没有搜索匹配，直接使用 Shiki 高亮
+    return highlightedLines.value[index] || escapeHtml(originalContent);
   }
   
   // 查找这一行的所有匹配项
   const lineMatches = props.searchMatches.filter(m => m.lineIndex === index);
   
   if (lineMatches.length === 0) {
-    return baseContent;
+    // 这一行没有匹配，使用 Shiki 高亮
+    return highlightedLines.value[index] || escapeHtml(originalContent);
   }
   
-  // 对每个匹配项进行高亮
-  let result = baseContent;
+  // 有搜索匹配，先转义 HTML 特殊字符，然后高亮搜索词
+  let result = escapeHtml(originalContent);
   
   // 按列位置排序，从后往前替换，避免影响后续位置
   lineMatches.sort((a, b) => b.columnIndex - a.columnIndex);
   
   for (const match of lineMatches) {
     const escapedMatch = escapeHtml(match.text);
-    // 创建一个简单的正则来匹配文本（不处理 HTML 标签内的内容）
+    // 创建一个简单的正则来匹配文本
     const regex = new RegExp(`(${escapedMatch})`, 'g');
     result = result.replace(regex, '<span class="search-match">$1</span>');
   }
