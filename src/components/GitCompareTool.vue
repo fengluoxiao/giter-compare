@@ -2244,7 +2244,7 @@ const handleGlobalSearchOpenFile = (path: string, lineNumber?: number) => {
   
   if (fileNode) {
     // 文件在文件树中，激活差异对比
-    selectFile(fileNode);
+    selectFile(fileNode.path);  // 传递路径而不是节点对象
     
     // 跳转到指定行
     setTimeout(() => {
