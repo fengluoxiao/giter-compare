@@ -2250,7 +2250,12 @@ const handleGlobalSearchOpenFile = (path: string, lineNumber?: number) => {
     nextTick(() => {
       setTimeout(() => {
         console.log('触发跳转到行:', lineNumber);
-        const event = new CustomEvent('jump-to-line', { detail: lineNumber });
+        const event = new CustomEvent('jump-to-line', { 
+          detail: { 
+            lineNumber,
+            searchText: searchQuery // 传递搜索词用于精确定位
+          } 
+        });
         window.dispatchEvent(event);
       }, 200);
     });

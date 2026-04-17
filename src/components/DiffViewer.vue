@@ -299,16 +299,16 @@ onUnmounted(() => {
 // 处理跳转到指定行
 const handleJumpToLine = (event: Event) => {
   const customEvent = event as CustomEvent;
-  const lineNumber = customEvent.detail as number;
+  const { lineNumber, searchText } = customEvent.detail as { lineNumber: number; searchText?: string };
   
-  console.log('跳转到行:', lineNumber);
+  console.log('跳转到行:', lineNumber, '搜索词:', searchText);
   
   if (leftCodeContent.value && lineNumber) {
     const lineHeight = 24; // 假设每行高度为 24px
     const containerHeight = leftCodeContent.value.clientHeight;
     
-    // 计算目标行的位置，让目标行显示在可视区域中心
-    const targetScrollTop = (lineNumber - 1) * lineHeight - (containerHeight / 2) + (lineHeight / 2);
+    // 首先尝试直接使用行号计算
+    let targetScrollTop = (lineNumber - 1) * lineHeight - (containerHeight / 2) + (lineHeight / 2);
     leftCodeContent.value.scrollTop = Math.max(0, targetScrollTop);
     
     // 同步右侧滚动
