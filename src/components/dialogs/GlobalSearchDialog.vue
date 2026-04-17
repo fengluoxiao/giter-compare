@@ -70,7 +70,7 @@
                 @click="openFileAtLine(result.file_path, match.line_number)"
               >
                 <span class="line-number">{{ match.line_number }}</span>
-                <span class="line-content" v-html="highlightMatch(match.line_content, match.matched_text)"></span>
+                <span class="line-content" v-html="highlightMatch(getContextAroundMatch(match.line_content, match.matched_text), match.matched_text)"></span>
               </div>
               <div v-if="result.matches.length > 10" class="more-matches">
                 还有 {{ result.matches.length - 10 }} 个匹配，请打开文件查看
@@ -192,6 +192,21 @@ const highlightMatch = (content: string, matchedText: string): string => {
   const escaped = matchedText.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
   const regex = new RegExp(`(${escaped})`, 'gi');
   return content.replace(regex, '<span class="search-highlight">$1</span>');
+};
+
+// 获取匹配内容的上下文（前后各 80 个字符）
+const getContextAroundMatch = (content: string, matchedText: string, contextLength: number = 80): string => {
+  const index = content.toLowerCase().indexOf(matchedText.toLowerCase());
+  if (index === -1) return content;
+  
+  const start = Math.max(0, index - contextLength);
+  const end = Math.min(content.length, index + matchedText.length + contextLength);
+  
+  let result = content.substring(start, end);
+  if (start > 0) result = '...' + result;
+  if (end < content.length) result = result + '...';
+  
+  return result;
 };
 
 // 获取相对路径
@@ -479,8 +494,6 @@ defineExpose({
   border-bottom: 1px solid var(--border-color-light);
   cursor: pointer;
   transition: background-color 0.2s;
-  max-height: 150px;
-  overflow: hidden;
 }
 
 .match-line:hover {
@@ -502,11 +515,6 @@ defineExpose({
   white-space: pre-wrap;
   word-break: break-all;
   color: var(--text-primary);
-  overflow: hidden;
-  text-overflow: ellipsis;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
 }
 
 :deep(.search-highlight) {
