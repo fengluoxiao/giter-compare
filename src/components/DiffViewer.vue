@@ -279,11 +279,34 @@ const handleMinimapJump = (scrollTop: number) => {
 // 生命周期钩子
 onMounted(() => {
   window.addEventListener('keydown', handleKeyDown);
+  // 监听跳转行的事件
+  window.addEventListener('jump-to-line', handleJumpToLine);
 });
 
 onUnmounted(() => {
   window.removeEventListener('keydown', handleKeyDown);
+  window.removeEventListener('jump-to-line', handleJumpToLine);
 });
+
+// 处理跳转到指定行
+const handleJumpToLine = (event: Event) => {
+  const customEvent = event as CustomEvent;
+  const lineNumber = customEvent.detail as number;
+  
+  if (leftCodeContent.value) {
+    const lineHeight = 24; // 假设每行高度为 24px
+    const targetScrollTop = (lineNumber - 1) * lineHeight - 100;
+    leftCodeContent.value.scrollTop = Math.max(0, targetScrollTop);
+    
+    // 同步右侧滚动
+    if (rightCodeContent.value) {
+      rightCodeContent.value.scrollTop = leftCodeContent.value.scrollTop;
+    }
+    
+    // 更新 minimap 状态
+    leftScrollTop.value = leftCodeContent.value.scrollTop;
+  }
+};
 
 // 监听文件变化，重新搜索
 watch(() => props.currentFile, () => {

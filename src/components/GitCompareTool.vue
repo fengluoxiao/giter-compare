@@ -2180,9 +2180,40 @@ const handleGlobalSearchOpenFile = (path: string, lineNumber?: number) => {
     globalSearchDialog.value.close();
   }
   
-  // 打开文件
-  // TODO: 实现打开文件并跳转到指定行
-  console.log('打开文件:', path, '行号:', lineNumber);
+  // 获取相对路径
+  const relativePath = path.startsWith(currentPath.value) 
+    ? path.substring(currentPath.value.length).replace(/^[/\\]/, '')
+    : path;
+  
+  // 打开文件并跳转到指定行
+  if (lineNumber) {
+    // 如果当前没有打开这个文件，创建新标签
+    const existingTab = tabs.value.find(tab => tab.path === relativePath);
+    if (existingTab) {
+      activateTab(existingTab.id);
+      // 跳转到指定行
+      setTimeout(() => {
+        const event = new CustomEvent('jump-to-line', { detail: lineNumber });
+        window.dispatchEvent(event);
+      }, 100);
+    } else {
+      openFileByPath(relativePath).then(() => {
+        // 跳转到指定行
+        setTimeout(() => {
+          const event = new CustomEvent('jump-to-line', { detail: lineNumber });
+          window.dispatchEvent(event);
+        }, 100);
+      });
+    }
+  } else {
+    // 不跳转行，只打开文件
+    const existingTab = tabs.value.find(tab => tab.path === relativePath);
+    if (existingTab) {
+      activateTab(existingTab.id);
+    } else {
+      openFileByPath(relativePath);
+    }
+  }
 };
 
 const selectOldFile = async () => {
