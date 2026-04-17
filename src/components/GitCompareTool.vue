@@ -2215,7 +2215,7 @@ const handleGlobalKeyDown = (event: KeyboardEvent) => {
 };
 
 // 全局搜索打开文件处理
-const handleGlobalSearchOpenFile = (path: string, lineNumber?: number) => {
+const handleGlobalSearchOpenFile = (path: string, lineNumber?: number, searchText?: string) => {
   // 关闭搜索对话框
   if (globalSearchDialog.value) {
     globalSearchDialog.value.close();
@@ -2249,11 +2249,11 @@ const handleGlobalSearchOpenFile = (path: string, lineNumber?: number) => {
     // 等待 DOM 更新后再跳转
     nextTick(() => {
       setTimeout(() => {
-        console.log('触发跳转到行:', lineNumber);
+        console.log('触发跳转到行:', lineNumber, '搜索词:', searchText);
         const event = new CustomEvent('jump-to-line', { 
           detail: { 
             lineNumber,
-            searchText: searchQuery // 传递搜索词用于精确定位
+            searchText
           } 
         });
         window.dispatchEvent(event);

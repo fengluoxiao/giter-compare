@@ -184,7 +184,7 @@ const openFile = (path: string) => {
 
 // 打开文件并跳转到指定行
 const openFileAtLine = (path: string, lineNumber: number) => {
-  emit('open-file', path, lineNumber);
+  emit('open-file', path, lineNumber, searchQuery.value);
 };
 
 // 高亮匹配文本（显示整行内容）
