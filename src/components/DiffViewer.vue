@@ -34,6 +34,7 @@
               :theme="theme || 'light'"
               :search-matches="leftSearchMatches"
               :current-match-index="currentLeftMatchIndex"
+              :highlighted-line="highlightedLine"
             />
           </div>
         </div>
@@ -49,6 +50,7 @@
               :theme="theme || 'light'"
               :search-matches="rightSearchMatches"
               :current-match-index="currentRightMatchIndex"
+              :highlighted-line="highlightedLine"
             />
           </div>
         </div>
@@ -147,6 +149,7 @@ const leftSearchMatches = ref<SearchMatch[]>([]);
 const rightSearchMatches = ref<SearchMatch[]>([]);
 const currentLeftMatchIndex = ref(-1);
 const currentRightMatchIndex = ref(-1);
+const highlightedLine = ref<number | null>(null); // 当前高亮的行号
 
 // 合并左右两侧内容用于搜索
 const combinedContent = computed(() => {
@@ -313,7 +316,15 @@ const handleJumpToLine = (event: Event) => {
     // 更新 minimap 状态
     leftScrollTop.value = leftCodeContent.value.scrollTop;
     
-    console.log('滚动位置:', leftCodeContent.value.scrollTop);
+    // 高亮目标行
+    highlightedLine.value = lineNumber;
+    console.log('高亮行:', highlightedLine.value);
+    
+    // 3 秒后移除高亮
+    setTimeout(() => {
+      highlightedLine.value = null;
+      console.log('移除高亮');
+    }, 3000);
   }
 };
 

@@ -4,7 +4,7 @@
       v-for="(line, index) in lines"
       :key="index"
       class="diff-line"
-      :class="[line.changeType, { 'current-match': isCurrentMatch(index) }]"
+      :class="[line.changeType, { 'current-match': isCurrentMatch(index), 'jump-highlight': isJumpHighlight(index) }]"
       :data-line="line.lineNum"
     >
       <span class="line-number">{{ line.lineNum > 0 ? line.lineNum : '' }}</span>
@@ -28,6 +28,7 @@ const props = defineProps<{
   theme?: 'light' | 'dark';
   searchMatches?: SearchMatch[];
   currentMatchIndex?: number;
+  highlightedLine?: number | null;
 }>();
 
 interface SearchMatch {
@@ -55,6 +56,16 @@ const isCurrentMatch = (index: number): boolean => {
   
   const currentMatch = props.searchMatches[props.currentMatchIndex];
   return currentMatch && currentMatch.lineIndex === index;
+};
+
+// 检查是否是跳转高亮的行
+const isJumpHighlight = (index: number): boolean => {
+  if (props.highlightedLine === null || props.highlightedLine === undefined) {
+    return false;
+  }
+  
+  // 行号从 1 开始，index 从 0 开始
+  return props.highlightedLine === index + 1;
 };
 
 // 获取行内容并高亮搜索匹配项
@@ -190,6 +201,21 @@ watch(() => [props.lines, props.filename, props.theme], () => {
   border-radius: 2px;
   padding: 1px 2px;
   box-shadow: 0 0 4px rgba(255, 193, 7, 0.5);
+}
+
+/* 跳转高亮 */
+.diff-line.jump-highlight {
+  background-color: rgba(66, 153, 225, 0.3) !important;
+  animation: highlight-fade 3s ease-out;
+}
+
+@keyframes highlight-fade {
+  0% {
+    background-color: rgba(66, 153, 225, 0.5);
+  }
+  100% {
+    background-color: transparent;
+  }
 }
 
 .line-number {
