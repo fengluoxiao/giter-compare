@@ -4,8 +4,7 @@
       v-for="(line, index) in lines"
       :key="index"
       class="diff-line"
-      :class="line.changeType"
-      :class="{ 'current-match': isCurrentMatch(index) }"
+      :class="[line.changeType, { 'current-match': isCurrentMatch(index) }]"
       :data-line="line.lineNum"
     >
       <span class="line-number">{{ line.lineNum > 0 ? line.lineNum : '' }}</span>
