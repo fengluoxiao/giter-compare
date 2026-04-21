@@ -462,6 +462,9 @@ interface CommitInfo {
 }
 const commitList = ref<CommitInfo[]>([]);
 
+// 项目版本设置缓存（内存存储，不持久化）
+const projectVersionSettings = new Map<string, { leftVersion: string; rightVersion: string }>();
+
 // 根据旧版本选择，计算可用的新版本列表
 const availableNewVersions = computed(() => {
   const oldHash = projectSettings.value.leftVersion;
@@ -508,12 +511,13 @@ const onDiffNewVersionChange = async (version: string) => {
 
 // 保存版本设置并刷新
 const saveAndRefreshVersions = async () => {
-  // 保存到 localStorage
-  const key = `compare-versions:${projectSettings.value.path}`;
-  localStorage.setItem(key, JSON.stringify({
-    oldVersion: projectSettings.value.leftVersion,
-    newVersion: projectSettings.value.rightVersion
-  }));
+  // 保存到内存缓存
+  if (projectSettings.value.path) {
+    projectVersionSettings.set(projectSettings.value.path, {
+      leftVersion: projectSettings.value.leftVersion,
+      rightVersion: projectSettings.value.rightVersion
+    });
+  }
 
   // 清除当前项目的 diff 缓存
   const projectPath = currentPath.value;
@@ -583,12 +587,13 @@ const openProjectSettings = async (project: Project) => {
 // 保存项目设置
 const saveProjectSettings = async () => {
   console.log('保存项目设置:', projectSettings.value);
-  // 保存比对版本设置到 localStorage
-  const key = `compare-versions:${projectSettings.value.path}`;
-  localStorage.setItem(key, JSON.stringify({
-    oldVersion: projectSettings.value.leftVersion,
-    newVersion: projectSettings.value.rightVersion
-  }));
+  // 保存比对版本设置到内存缓存
+  if (projectSettings.value.path) {
+    projectVersionSettings.set(projectSettings.value.path, {
+      leftVersion: projectSettings.value.leftVersion,
+      rightVersion: projectSettings.value.rightVersion
+    });
+  }
   showProjectSettings.value = false;
 
   // 清除当前项目的 diff 缓存
@@ -611,12 +616,10 @@ const saveProjectSettings = async () => {
 // 加载比对版本设置
 const loadCompareVersions = (projectPath: string) => {
   try {
-    const key = `compare-versions:${projectPath}`;
-    const saved = localStorage.getItem(key);
+    const saved = projectVersionSettings.get(projectPath);
     if (saved) {
-      const parsed = JSON.parse(saved);
-      projectSettings.value.leftVersion = parsed.oldVersion || '';
-      projectSettings.value.rightVersion = parsed.newVersion || 'WORKING';
+      projectSettings.value.leftVersion = saved.leftVersion || '';
+      projectSettings.value.rightVersion = saved.rightVersion || 'WORKING';
     }
   } catch (e) {
     console.error('加载比对版本设置失败:', e);
