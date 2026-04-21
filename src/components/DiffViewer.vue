@@ -3,9 +3,32 @@
     <div v-if="currentFile" class="file-info-bar">
       <div class="file-info">
         <span class="file-label">旧版本</span>
+        <select
+          v-if="commitList && commitList.length > 0"
+          :value="oldVersion"
+          class="version-select"
+          @change="$emit('change-old-version', ($event.target as HTMLSelectElement).value)"
+        >
+          <option v-for="commit in commitList" :key="commit.hash" :value="commit.hash">
+            {{ commit.short_hash }} - {{ commit.message }}
+          </option>
+        </select>
+        <span v-else class="version-text">{{ oldVersion || 'HEAD' }}</span>
       </div>
       <div class="file-info">
         <span class="file-label">新版本</span>
+        <select
+          v-if="commitList && commitList.length > 0"
+          :value="newVersion"
+          class="version-select"
+          @change="$emit('change-new-version', ($event.target as HTMLSelectElement).value)"
+        >
+          <option value="WORKING">工作区</option>
+          <option v-for="commit in availableNewVersions" :key="commit.hash" :value="commit.hash">
+            {{ commit.short_hash }} - {{ commit.message }}
+          </option>
+        </select>
+        <span v-else class="version-text">{{ newVersion === 'WORKING' ? '工作区' : (newVersion || '工作区') }}</span>
       </div>
     </div>
 
@@ -112,6 +135,12 @@ interface DiffStats {
   changed: number;
 }
 
+interface CommitInfo {
+  hash: string;
+  short_hash: string;
+  message: string;
+}
+
 const props = defineProps<{
   currentFile: FileNode | null;
   leftLines: DiffLine[];
@@ -120,6 +149,9 @@ const props = defineProps<{
   diffStats: DiffStats | null;
   viewMode: 'working' | 'staged';
   theme?: 'light' | 'dark';
+  oldVersion?: string;
+  newVersion?: string;
+  commitList?: CommitInfo[];
 }>();
 
 // 判断是否是文件查看模式（通过检查文件状态是否为空）
@@ -129,7 +161,21 @@ const isFileViewMode = computed(() => {
 
 const emit = defineEmits<{
   'scroll': [scrollTop: number];
+  'change-old-version': [version: string];
+  'change-new-version': [version: string];
 }>();
+
+// 根据旧版本选择，计算可用的新版本列表
+const availableNewVersions = computed(() => {
+  if (!props.commitList || !props.oldVersion) {
+    return props.commitList || [];
+  }
+  const oldIndex = props.commitList.findIndex(c => c.hash === props.oldVersion);
+  if (oldIndex === -1) {
+    return props.commitList;
+  }
+  return props.commitList.slice(0, oldIndex);
+});
 
 // 代码内容区域 refs，用于同步滚动
 const leftCodeContent = ref<HTMLElement | null>(null);
@@ -441,6 +487,58 @@ defineExpose({
   color: var(--text-secondary);
   text-transform: uppercase;
   font-weight: 600;
+  flex-shrink: 0;
+}
+
+.version-select {
+  flex: 1;
+  min-width: 0;
+  padding: 5px 28px 5px 10px;
+  border: 1px solid var(--border-color);
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 500;
+  color: var(--text-primary);
+  background-color: var(--bg-primary);
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 24 24' fill='none' stroke='%236b7280' stroke-width='2' stroke-linecap='round' stroke-linejoin='round'%3E%3Cpolyline points='6 9 12 15 18 9'%3E%3C/polyline%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 8px center;
+  background-size: 14px;
+  appearance: none;
+  -webkit-appearance: none;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.04);
+}
+
+.version-select:hover {
+  border-color: var(--accent-color);
+  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.06), 0 0 0 3px rgba(74, 126, 255, 0.08);
+}
+
+.version-select:focus {
+  outline: none;
+  border-color: var(--accent-color);
+  box-shadow: 0 0 0 3px rgba(74, 126, 255, 0.15);
+}
+
+.version-select option {
+  padding: 8px;
+  font-size: 12px;
+}
+
+.version-text {
+  flex: 1;
+  min-width: 0;
+  font-size: 12px;
+  color: var(--text-primary);
+  padding: 4px 8px;
+  background-color: var(--bg-primary);
+  border-radius: 6px;
+  border: 1px solid var(--border-color);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .file-path {

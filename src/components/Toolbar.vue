@@ -11,15 +11,7 @@
       </button>
     </div>
     <div class="toolbar-center">
-      <button class="btn btn-secondary" @click="testNativePanel" title="原生面板">
-        🍎 原生面板
-      </button>
-      <button class="btn btn-secondary" @click="testNativeAlert" title="原生警告">
-        ⚠️ 原生警告
-      </button>
-      <button class="btn btn-secondary" @click="testNativeConfirm" title="原生确认">
-        ❓ 原生确认
-      </button>
+      <!-- 中间区域留白 -->
     </div>
     <div class="toolbar-right">
       <button class="btn btn-secondary" @click="$emit('manage-workspace')" title="工作区管理">
@@ -45,7 +37,7 @@
 </template>
 
 <script setup lang="ts">
-import { invoke } from '@tauri-apps/api/core';
+
 
 defineProps<{
   theme: string;
@@ -62,52 +54,10 @@ const emit = defineEmits<{
   'refresh': [];
   'manage-plugins': [];
   'manage-workspace': [];
+  'project-settings': [];
 }>();
 
-// 测试原生面板
-const testNativePanel = async () => {
-  try {
-    await invoke('open_swiftui_panel', {
-      request: {
-        content: '这是从 Web 前端传递的内容！\n\n原生 macOS 面板可以显示丰富的内容。',
-        title: '原生 macOS 面板测试',
-        button_text: '点击回调前端'
-      }
-    });
-  } catch (error) {
-    console.error('打开原生面板失败:', error);
-  }
-};
-
-// 测试原生警告
-const testNativeAlert = async () => {
-  try {
-    await invoke('show_native_alert', {
-      request: {
-        title: '原生 macOS 警告',
-        message: '这是一个使用 AppKit 构建的原生警告弹窗。',
-        button_text: '我知道了'
-      }
-    });
-  } catch (error) {
-    console.error('显示原生警告失败:', error);
-  }
-};
-
-// 测试原生确认
-const testNativeConfirm = async () => {
-  try {
-    await invoke('show_native_alert', {
-      request: {
-        title: '请确认',
-        message: '确定要执行此操作吗？此操作不可撤销。',
-        button_text: '确认'
-      }
-    });
-  } catch (error) {
-    console.error('显示原生确认失败:', error);
-  }
-};
+// 原生测试功能已移除
 </script>
 
 <style scoped>

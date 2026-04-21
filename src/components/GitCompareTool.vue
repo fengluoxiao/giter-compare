@@ -1,7 +1,8 @@
 <template>
   <div class="app">
-    <!-- 工具栏 -->
+    <!-- 网页工具栏（仅在非 macOS 或原生工具栏不可用时显示） -->
     <Toolbar
+      v-if="!useNativeToolbar"
       :theme="theme"
       :has-prev="hasPrev"
       :has-next="hasNext"
@@ -52,6 +53,7 @@
         @export-projects="exportProjects"
         @import-projects="importProjects"
         @switch-workspace="switchWorkspace"
+        @project-settings="openProjectSettings"
       />
 
       <!-- 中间文件树 -->
@@ -84,7 +86,12 @@
         :diff-stats="diffStats"
         :view-mode="viewMode"
         :theme="theme"
+        :old-version="projectSettings.leftVersion"
+        :new-version="projectSettings.rightVersion"
+        :commit-list="commitList"
         @scroll="handleScroll"
+        @change-old-version="onDiffOldVersionChange"
+        @change-new-version="onDiffNewVersionChange"
       />
     </div>
 
@@ -164,6 +171,118 @@
       </div>
     </div>
 
+    <!-- 项目设置弹窗 -->
+    <div v-if="showProjectSettings" class="permission-overlay" @click.self="showProjectSettings = false">
+      <div class="project-settings-dialog">
+        <div class="settings-header">
+          <h3>项目设置</h3>
+          <button class="close-btn" @click="showProjectSettings = false">×</button>
+        </div>
+        <div class="settings-content">
+          <!-- 项目信息 -->
+          <div class="settings-section">
+            <h4>项目信息</h4>
+            <div class="settings-row">
+              <label class="settings-label">项目名称</label>
+              <input type="text" v-model="projectSettings.name" class="settings-input" />
+            </div>
+            <div class="settings-row">
+              <label class="settings-label">项目路径</label>
+              <input type="text" v-model="projectSettings.path" class="settings-input" readonly />
+            </div>
+          </div>
+
+          <!-- Git 设置 -->
+          <div class="settings-section">
+            <h4>Git 设置</h4>
+            <div class="settings-row checkbox">
+              <input type="checkbox" id="autoFetch" v-model="projectSettings.autoFetch" />
+              <label for="autoFetch">自动获取远程更新</label>
+            </div>
+            <div class="settings-row checkbox">
+              <input type="checkbox" id="showUntracked" v-model="projectSettings.showUntracked" />
+              <label for="showUntracked">显示未跟踪文件</label>
+            </div>
+            <div class="settings-row">
+              <label class="settings-label">所选分支</label>
+              <select v-model="projectSettings.defaultBranch" class="settings-input settings-select">
+                <option v-for="branch in branchList" :key="branch" :value="branch">{{ branch }}</option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 比对版本 -->
+          <div class="settings-section">
+            <h4>比对版本</h4>
+            <div class="settings-row">
+              <label class="settings-label">旧版本</label>
+              <select v-model="projectSettings.leftVersion" class="settings-input settings-select" @change="onOldVersionChange">
+                <option v-for="commit in commitList" :key="commit.hash" :value="commit.hash">
+                  {{ commit.short_hash }} - {{ commit.message }}
+                </option>
+              </select>
+            </div>
+            <div class="settings-row">
+              <label class="settings-label">新版本</label>
+              <select v-model="projectSettings.rightVersion" class="settings-input settings-select">
+                <option value="WORKING">工作区 (最新未提交)</option>
+                <option v-for="commit in availableNewVersions" :key="commit.hash" :value="commit.hash">
+                  {{ commit.short_hash }} - {{ commit.message }}
+                </option>
+              </select>
+            </div>
+          </div>
+
+          <!-- 对比设置 -->
+          <div class="settings-section">
+            <h4>对比设置</h4>
+            <div class="settings-row checkbox">
+              <input type="checkbox" id="ignoreWhitespace" v-model="projectSettings.ignoreWhitespace" />
+              <label for="ignoreWhitespace">忽略空白差异</label>
+            </div>
+            <div class="settings-row checkbox">
+              <input type="checkbox" id="caseSensitive" v-model="projectSettings.caseSensitive" />
+              <label for="caseSensitive">大小写敏感</label>
+            </div>
+            <div class="settings-row checkbox">
+              <input type="checkbox" id="ignoreLineEnding" v-model="projectSettings.ignoreLineEnding" />
+              <label for="ignoreLineEnding">忽略行尾差异 (CRLF/LF)</label>
+            </div>
+          </div>
+
+          <!-- 文件过滤 -->
+          <div class="settings-section">
+            <h4>文件过滤</h4>
+            <div class="settings-row">
+              <label class="settings-label">忽略文件模式（每行一个）</label>
+              <textarea v-model="projectSettings.ignorePatterns" class="settings-textarea" rows="3" placeholder="*.log&#10;node_modules/&#10;.DS_Store"></textarea>
+            </div>
+            <div class="settings-row checkbox">
+              <input type="checkbox" id="showHidden" v-model="projectSettings.showHiddenFiles" />
+              <label for="showHidden">显示隐藏文件</label>
+            </div>
+          </div>
+
+          <!-- 通知设置 -->
+          <div class="settings-section">
+            <h4>通知设置</h4>
+            <div class="settings-row checkbox">
+              <input type="checkbox" id="notifyChanges" v-model="projectSettings.notifyChanges" />
+              <label for="notifyChanges">文件变更时通知</label>
+            </div>
+            <div class="settings-row checkbox">
+              <input type="checkbox" id="notifySync" v-model="projectSettings.notifySync" />
+              <label for="notifySync">同步完成时通知</label>
+            </div>
+          </div>
+        </div>
+        <div class="settings-actions">
+          <button class="btn btn-secondary" @click="showProjectSettings = false">取消</button>
+          <button class="btn btn-primary" @click="saveProjectSettings">保存设置</button>
+        </div>
+      </div>
+    </div>
+
     <!-- 通用输入对话框 -->
     <PromptDialog
       :open="showPromptDialog"
@@ -173,6 +292,35 @@
       @confirm="handleCreateWorkspace"
       @cancel="showPromptDialog = false"
     />
+
+    <!-- 底部状态栏 -->
+    <div class="status-bar">
+      <div class="status-bar-left">
+        <div class="status-item" title="当前分支">
+          <span class="status-icon">🌿</span>
+          <span class="status-text">{{ currentBranch || '未选择项目' }}</span>
+        </div>
+        <div class="status-item" v-if="currentProject" title="当前项目">
+          <span class="status-icon">📁</span>
+          <span class="status-text">{{ currentProject.name }}</span>
+        </div>
+      </div>
+      <div class="status-bar-right">
+        <div class="status-item" title="文件编码">
+          <span class="status-text">UTF-8</span>
+        </div>
+        <div class="status-item" v-if="currentFile" title="换行符">
+          <span class="status-text">LF</span>
+        </div>
+        <div class="status-item" v-if="currentFile" title="文件类型">
+          <span class="status-text">{{ getFileExtension(currentFile.name) || 'TEXT' }}</span>
+        </div>
+        <div class="status-item" v-if="diffStats" title="变更统计">
+          <span class="status-add">+{{ diffStats.added }}</span>
+          <span class="status-del">-{{ diffStats.removed }}</span>
+        </div>
+      </div>
+    </div>
   </div>
 </template>
 
@@ -253,6 +401,9 @@ const viewMode = ref<'working' | 'staged'>('working');
 const showAllFiles = ref(true);
 const showDeletedFiles = ref(false);
 
+// 是否使用原生工具栏（macOS 平台）
+const useNativeToolbar = ref(false);
+
 // 对话框状态
 const showCompareFile = ref(false);
 const showTextCompare = ref(false);
@@ -260,7 +411,217 @@ const showAddProject = ref(false);
 const showPluginManager = ref(false);
 const showWorkspaceManager = ref(false);
 const showPermissionDialog = ref(false);
+const showProjectSettings = ref(false);
 const showPromptDialog = ref(false);
+
+// 项目设置
+interface ProjectSettings {
+  name: string;
+  path: string;
+  autoFetch: boolean;
+  showUntracked: boolean;
+  defaultBranch: string;
+  leftVersion: string;
+  rightVersion: string;
+  ignoreWhitespace: boolean;
+  caseSensitive: boolean;
+  ignoreLineEnding: boolean;
+  ignorePatterns: string;
+  showHiddenFiles: boolean;
+  notifyChanges: boolean;
+  notifySync: boolean;
+}
+
+const projectSettings = ref<ProjectSettings>({
+  name: '',
+  path: '',
+  autoFetch: true,
+  showUntracked: true,
+  defaultBranch: 'main',
+  leftVersion: 'HEAD',
+  rightVersion: 'WORKING',
+  ignoreWhitespace: false,
+  caseSensitive: true,
+  ignoreLineEnding: true,
+  ignorePatterns: '*.log\nnode_modules/\n.DS_Store',
+  showHiddenFiles: false,
+  notifyChanges: true,
+  notifySync: false,
+});
+
+// 分支列表
+const branchList = ref<string[]>([]);
+
+// Commit 列表
+interface CommitInfo {
+  hash: string;
+  short_hash: string;
+  message: string;
+  author: string;
+  date: string;
+}
+const commitList = ref<CommitInfo[]>([]);
+
+// 根据旧版本选择，计算可用的新版本列表
+const availableNewVersions = computed(() => {
+  const oldHash = projectSettings.value.leftVersion;
+  if (!oldHash || oldHash === 'WORKING') {
+    return commitList.value;
+  }
+  const oldIndex = commitList.value.findIndex(c => c.hash === oldHash);
+  if (oldIndex === -1) {
+    return commitList.value;
+  }
+  // 只返回比旧版本更新的 commit（索引更小）
+  return commitList.value.slice(0, oldIndex);
+});
+
+// 旧版本变更处理
+const onOldVersionChange = () => {
+  const oldHash = projectSettings.value.leftVersion;
+  const currentRight = projectSettings.value.rightVersion;
+
+  // 如果当前新版本不在可用列表中，重置为 WORKING
+  if (oldHash && oldHash !== 'WORKING') {
+    const oldIndex = commitList.value.findIndex(c => c.hash === oldHash);
+    if (oldIndex !== -1) {
+      const rightIndex = commitList.value.findIndex(c => c.hash === currentRight);
+      // 如果右边选的版本不在左边版本之前（即不比它新），则重置
+      if (rightIndex === -1 || rightIndex >= oldIndex) {
+        projectSettings.value.rightVersion = 'WORKING';
+      }
+    }
+  }
+};
+
+// DiffViewer 版本变更处理
+const onDiffOldVersionChange = async (version: string) => {
+  projectSettings.value.leftVersion = version;
+  onOldVersionChange();
+  await saveAndRefreshVersions();
+};
+
+const onDiffNewVersionChange = async (version: string) => {
+  projectSettings.value.rightVersion = version;
+  await saveAndRefreshVersions();
+};
+
+// 保存版本设置并刷新
+const saveAndRefreshVersions = async () => {
+  // 保存到 localStorage
+  const key = `compare-versions:${projectSettings.value.path}`;
+  localStorage.setItem(key, JSON.stringify({
+    oldVersion: projectSettings.value.leftVersion,
+    newVersion: projectSettings.value.rightVersion
+  }));
+
+  // 清除当前项目的 diff 缓存
+  const projectPath = currentPath.value;
+  for (const cacheKey of diffCache.value.keys()) {
+    if (cacheKey.startsWith(`${projectPath}:`)) {
+      diffCache.value.delete(cacheKey);
+    }
+  }
+
+  // 刷新当前显示的文件并更新视图
+  if (currentFile.value) {
+    const diffResult = await loadFileDiff(currentFile.value, true);
+    if (diffResult) {
+      leftLines.value = diffResult.leftLines;
+      rightLines.value = diffResult.rightLines;
+      isBinary.value = diffResult.isBinary;
+      diffStats.value = diffResult.diffStats;
+
+      // 更新当前激活的标签页
+      if (activeTabId.value) {
+        const activeTab = tabs.value.find(t => t.id === activeTabId.value);
+        if (activeTab) {
+          activeTab.leftLines = diffResult.leftLines;
+          activeTab.rightLines = diffResult.rightLines;
+          activeTab.isBinary = diffResult.isBinary;
+          activeTab.diffStats = diffResult.diffStats;
+        }
+      }
+    }
+  }
+
+  // 刷新更改列表
+  await loadStagedFiles();
+};
+
+// 打开项目设置
+const openProjectSettings = async (project: Project) => {
+  projectSettings.value.name = project.name;
+  projectSettings.value.path = project.path;
+  showProjectSettings.value = true;
+
+  // 加载保存的比对版本设置
+  loadCompareVersions(project.path);
+
+  // 获取分支列表
+  try {
+    const branches = await invoke<string[]>('get_git_branches', { repoPath: project.path });
+    branchList.value = branches;
+    if (branches.length > 0 && !branches.includes(projectSettings.value.defaultBranch)) {
+      projectSettings.value.defaultBranch = branches[0];
+    }
+  } catch (error) {
+    console.error('获取分支列表失败:', error);
+    branchList.value = [];
+  }
+
+  // 获取 commit 历史
+  try {
+    const commits = await invoke<CommitInfo[]>('get_commit_history', { repoPath: project.path, limit: 30 });
+    commitList.value = commits;
+  } catch (error) {
+    console.error('获取 commit 历史失败:', error);
+    commitList.value = [];
+  }
+};
+
+// 保存项目设置
+const saveProjectSettings = async () => {
+  console.log('保存项目设置:', projectSettings.value);
+  // 保存比对版本设置到 localStorage
+  const key = `compare-versions:${projectSettings.value.path}`;
+  localStorage.setItem(key, JSON.stringify({
+    oldVersion: projectSettings.value.leftVersion,
+    newVersion: projectSettings.value.rightVersion
+  }));
+  showProjectSettings.value = false;
+
+  // 清除当前项目的 diff 缓存
+  const projectPath = currentPath.value;
+  for (const cacheKey of diffCache.value.keys()) {
+    if (cacheKey.startsWith(`${projectPath}:`)) {
+      diffCache.value.delete(cacheKey);
+    }
+  }
+
+  // 刷新当前显示的文件
+  if (currentFile.value) {
+    await loadFileDiff(currentFile.value);
+  }
+
+  // 刷新更改列表
+  await loadStagedFiles();
+};
+
+// 加载比对版本设置
+const loadCompareVersions = (projectPath: string) => {
+  try {
+    const key = `compare-versions:${projectPath}`;
+    const saved = localStorage.getItem(key);
+    if (saved) {
+      const parsed = JSON.parse(saved);
+      projectSettings.value.leftVersion = parsed.oldVersion || '';
+      projectSettings.value.rightVersion = parsed.newVersion || 'WORKING';
+    }
+  } catch (e) {
+    console.error('加载比对版本设置失败:', e);
+  }
+};
 
 // 全局搜索对话框
 const globalSearchDialog = ref<InstanceType<typeof GlobalSearchDialog> | null>(null);
@@ -283,6 +644,36 @@ const rightLines = ref<DiffLine[]>([]);
 const isBinary = ref(false);
 const diffStats = ref<{ added: number; removed: number; changed: number } | null>(null);
 const gitChanges = ref<GitStatus[]>([]);
+
+// 当前分支
+const currentBranch = ref('');
+
+// 获取当前项目
+const currentProject = computed(() => {
+  return projects.value.find(p => p.id === currentProjectId.value) || null;
+});
+
+// 获取文件扩展名
+const getFileExtension = (filename: string): string => {
+  const parts = filename.split('.');
+  return parts.length > 1 ? parts[parts.length - 1].toUpperCase() : '';
+};
+
+// 获取当前分支
+const fetchCurrentBranch = async () => {
+  const project = currentProject.value;
+  if (!project) {
+    currentBranch.value = '';
+    return;
+  }
+  try {
+    const branch = await invoke<string>('get_current_branch', { repoPath: project.path });
+    currentBranch.value = branch;
+  } catch (error) {
+    console.error('获取当前分支失败:', error);
+    currentBranch.value = '';
+  }
+};
 
 // 文件树缓存 - 键为项目路径，值为文件树数据（永久缓存，文件变更时自动刷新）
 const fileTreeCache = ref<Map<string, { tree: FileNode[]; changes: GitStatus[]; timestamp: number }>>(new Map());
@@ -325,6 +716,7 @@ const compareText1 = ref('');
 const compareText2 = ref('');
 
 let unlistenFileChange: (() => void) | null = null;
+let unlistenToolbarClick: (() => void) | null = null;
 
 // 获取所有文件列表（扁平化）
 const allFiles = computed(() => {
@@ -377,6 +769,10 @@ onMounted(async () => {
   // 添加全局快捷键监听
   window.addEventListener('keydown', handleGlobalKeyDown);
 
+  // 在 refactor/components 分支上禁用原生工具栏，始终使用网页工具栏
+  useNativeToolbar.value = false;
+  console.log('原生工具栏已禁用（refactor/components 分支）');
+
   unlistenFileChange = await listen('file-changed', (event: any) => {
     console.log('File changed event received:', event.payload);
     // 检查是否是结构变化（新增/删除文件或文件夹）
@@ -384,18 +780,18 @@ onMounted(async () => {
     const isStructuralChange = payload?.is_structural_change === true;
     const changedFilePath = payload?.path;
     const eventRepoPath = payload?.repo_path;
-    
+
     // 只有当事件来自当前项目时才处理
     if (eventRepoPath && eventRepoPath !== currentPath.value) {
       console.log('Event from different project, ignoring');
       return;
     }
-    
+
     if (isStructuralChange && currentPath.value) {
       // 文件结构变化，清除当前项目的文件树缓存
       clearFileTreeCache(currentPath.value);
     }
-    
+
     // 清除变更文件的 diff 缓存
     if (changedFilePath && currentPath.value) {
       const diffCacheKey = getDiffCacheKey(currentPath.value, changedFilePath);
@@ -404,15 +800,60 @@ onMounted(async () => {
         console.log('Cleared diff cache for changed file:', changedFilePath);
       }
     }
-    
+
     // 无论是否有 currentPath，都尝试刷新
     refresh();
   });
+
+  // 启动轮询检查原生工具栏按钮点击
+  const pollToolbarButtons = async () => {
+    try {
+      const buttonId = await invoke('poll_toolbar_button_click') as string | null;
+      if (buttonId) {
+        console.log('原生工具栏按钮点击:', buttonId);
+        switch (buttonId) {
+          case 'workspace':
+            showWorkspaceManager.value = true;
+            break;
+          case 'plugins':
+            showPluginManager.value = true;
+            break;
+          case 'theme':
+            toggleTheme();
+            break;
+          case 'prev':
+            navigatePrev();
+            break;
+          case 'next':
+            navigateNext();
+            break;
+          case 'refresh':
+            refresh();
+            break;
+          default:
+            console.log('未知的工具栏按钮:', buttonId);
+        }
+      }
+    } catch (error) {
+      console.error('轮询工具栏按钮失败:', error);
+    }
+  };
+
+  // 每 100ms 轮询一次
+  const pollInterval = setInterval(pollToolbarButtons, 100);
+
+  // 保存清理函数
+  unlistenToolbarClick = () => {
+    clearInterval(pollInterval);
+  };
 });
 
 onUnmounted(() => {
   if (unlistenFileChange) {
     unlistenFileChange();
+  }
+  if (unlistenToolbarClick) {
+    unlistenToolbarClick();
   }
   // 移除全局快捷键监听
   window.removeEventListener('keydown', handleGlobalKeyDown);
@@ -492,44 +933,64 @@ const selectStagedFile = async (path: string) => {
 const loadStagedFileDiff = async (file: FileNode) => {
   try {
     const fileStatus = file.status?.toLowerCase();
-    let workContent = '';
-    let headContent = '';
+    let leftContent = '';
+    let rightContent = '';
 
-    if (fileStatus === 'deleted') {
-      // 已删除的文件：工作区内容为空，从 Git 获取删除前的内容
-      workContent = '';
+    // 获取旧版本内容（左边）
+    const oldVersion = projectSettings.value.leftVersion;
+    if (oldVersion && oldVersion !== 'WORKING') {
       try {
-        headContent = await invoke<string>('get_file_content_at_revision', {
+        leftContent = await invoke<string>('get_file_content_at_revision', {
           repoPath: currentPath.value,
           filePath: file.path,
-          revision: 'HEAD'
+          revision: oldVersion
         });
       } catch (e) {
-        headContent = '';
+        leftContent = '';
       }
-    } else if (fileStatus === 'added') {
-      // 新增的文件：HEAD 中不存在，读取工作区内容
-      workContent = await invoke<string>('read_file_content', {
-        filePath: `${currentPath.value}/${file.path}`
-      });
-      headContent = '';
     } else {
-      // 修改的文件：读取工作区内容和 HEAD 版本
-      workContent = await invoke<string>('read_file_content', {
-        filePath: `${currentPath.value}/${file.path}`
-      });
-      try {
-        headContent = await invoke<string>('get_file_content_at_revision', {
-          repoPath: currentPath.value,
-          filePath: file.path,
-          revision: 'HEAD'
-        });
-      } catch (e) {
-        headContent = '';
+      // 工作区
+      if (fileStatus === 'deleted') {
+        leftContent = '';
+      } else {
+        try {
+          leftContent = await invoke<string>('read_file_content', {
+            filePath: `${currentPath.value}/${file.path}`
+          });
+        } catch (e) {
+          leftContent = '';
+        }
       }
     }
 
-    const isBinaryFile = workContent === '[二进制文件]' || headContent === '[二进制文件]';
+    // 获取新版本内容（右边）
+    const newVersion = projectSettings.value.rightVersion;
+    if (newVersion && newVersion !== 'WORKING') {
+      try {
+        rightContent = await invoke<string>('get_file_content_at_revision', {
+          repoPath: currentPath.value,
+          filePath: file.path,
+          revision: newVersion
+        });
+      } catch (e) {
+        rightContent = '';
+      }
+    } else {
+      // 工作区
+      if (fileStatus === 'deleted') {
+        rightContent = '';
+      } else {
+        try {
+          rightContent = await invoke<string>('read_file_content', {
+            filePath: `${currentPath.value}/${file.path}`
+          });
+        } catch (e) {
+          rightContent = '';
+        }
+      }
+    }
+
+    const isBinaryFile = leftContent === '[二进制文件]' || rightContent === '[二进制文件]';
 
     if (isBinaryFile) {
       currentFile.value = file;
@@ -544,7 +1005,7 @@ const loadStagedFileDiff = async (file: FileNode) => {
     if (fileStatus === 'deleted') {
       const alignedLeftLines: DiffLine[] = [];
       const alignedRightLines: DiffLine[] = [];
-      const oldLines = headContent.split('\n');
+      const oldLines = rightContent.split('\n');
 
       for (let i = 0; i < oldLines.length; i++) {
         alignedLeftLines.push({
@@ -569,9 +1030,38 @@ const loadStagedFileDiff = async (file: FileNode) => {
       return;
     }
 
+    // 对于新增的文件，直接显示完整的新文件内容
+    if (fileStatus === 'added') {
+      const alignedLeftLines: DiffLine[] = [];
+      const alignedRightLines: DiffLine[] = [];
+      const newLines = rightContent.split('\n');
+
+      for (let i = 0; i < newLines.length; i++) {
+        alignedLeftLines.push({
+          lineNum: 0,
+          content: '',
+          changeType: 'empty',
+          isDiff: false
+        });
+        alignedRightLines.push({
+          lineNum: i + 1,
+          content: newLines[i],
+          changeType: 'added',
+          isDiff: true
+        });
+      }
+
+      leftLines.value = alignedLeftLines;
+      rightLines.value = alignedRightLines;
+      isBinary.value = false;
+      diffStats.value = { added: newLines.length, removed: 0, changed: 0 };
+      currentFile.value = file;
+      return;
+    }
+
     const diffResult = await invoke<FileDiff>('compare_strings', {
-      oldContent: headContent,
-      newContent: workContent
+      oldContent: leftContent,
+      newContent: rightContent
     });
 
     // 构建 diff 行（复用 loadFileDiff 的逻辑）
@@ -921,9 +1411,24 @@ const switchProject = async (project: Project) => {
   stagedFiles.value = [];
   selectedStagedPath.value = '';
   
+  // 加载保存的版本设置
+  loadCompareVersions(project.path);
+  
+  // 加载 commit 历史
+  try {
+    const commits = await invoke<CommitInfo[]>('get_commit_history', { repoPath: project.path, limit: 30 });
+    commitList.value = commits;
+  } catch (error) {
+    console.error('获取 commit 历史失败:', error);
+    commitList.value = [];
+  }
+  
   await loadFileTree(project.path);
   await loadStagedFiles(); // 重新加载当前项目的更改列表
   await invoke('start_file_watcher', { repoPath: project.path });
+  
+  // 获取当前分支
+  await fetchCurrentBranch();
   
   // 更新窗口标题
   updateWindowTitle(project);
@@ -1634,8 +2139,12 @@ const handleScroll = (scrollTop: number) => {
   // 可以在这里添加额外的滚动处理逻辑
 };
 
-// 获取 diff 缓存键
-const getDiffCacheKey = (projectPath: string, filePath: string) => `${projectPath}:${filePath}`;
+// 获取 diff 缓存键（包含版本信息）
+const getDiffCacheKey = (projectPath: string, filePath: string) => {
+  const oldV = projectSettings.value.leftVersion || 'WORKING';
+  const newV = projectSettings.value.rightVersion || 'WORKING';
+  return `${projectPath}:${filePath}:${oldV}:${newV}`;
+};
 
 // 获取 diff 缓存
 const getDiffFromCache = (key: string): { leftLines: DiffLine[]; rightLines: DiffLine[]; isBinary: boolean; diffStats: any } | null => {
@@ -1691,44 +2200,64 @@ const loadFileDiff = async (file: FileNode, forceRefresh = false): Promise<{ lef
 
   try {
     const fileStatus = file.status?.toLowerCase();
-    let workContent = '';
-    let indexContent = '';
+    let leftContent = '';
+    let rightContent = '';
 
-    if (fileStatus === 'deleted') {
-      // 已删除的文件：工作区内容为空，从 Git 获取删除前的内容
-      workContent = '';
+    // 获取旧版本内容（左边）
+    const oldVersion = projectSettings.value.leftVersion;
+    if (oldVersion && oldVersion !== 'WORKING') {
       try {
-        indexContent = await invoke<string>('get_file_content_at_revision', {
+        leftContent = await invoke<string>('get_file_content_at_revision', {
           repoPath: currentPath.value,
           filePath: file.path,
-          revision: 'HEAD'
+          revision: oldVersion
         });
       } catch (e) {
-        indexContent = '';
+        leftContent = '';
       }
-    } else if (fileStatus === 'added') {
-      // 新增的文件：索引内容为空，读取工作区内容
-      workContent = await invoke<string>('read_file_content', {
-        filePath: `${currentPath.value}/${file.path}`
-      });
-      indexContent = '';
     } else {
-      // 修改的文件：读取工作区内容和 Git 中的内容
-      workContent = await invoke<string>('read_file_content', {
-        filePath: `${currentPath.value}/${file.path}`
-      });
-      try {
-        indexContent = await invoke<string>('get_file_content_at_revision', {
-          repoPath: currentPath.value,
-          filePath: file.path,
-          revision: 'HEAD'
-        });
-      } catch (e) {
-        indexContent = '';
+      // 工作区
+      if (fileStatus === 'deleted') {
+        leftContent = '';
+      } else {
+        try {
+          leftContent = await invoke<string>('read_file_content', {
+            filePath: `${currentPath.value}/${file.path}`
+          });
+        } catch (e) {
+          leftContent = '';
+        }
       }
     }
 
-    const isBinaryFile = workContent === '[二进制文件]' || indexContent === '[二进制文件]';
+    // 获取新版本内容（右边）
+    const newVersion = projectSettings.value.rightVersion;
+    if (newVersion && newVersion !== 'WORKING') {
+      try {
+        rightContent = await invoke<string>('get_file_content_at_revision', {
+          repoPath: currentPath.value,
+          filePath: file.path,
+          revision: newVersion
+        });
+      } catch (e) {
+        rightContent = '';
+      }
+    } else {
+      // 工作区
+      if (fileStatus === 'deleted') {
+        rightContent = '';
+      } else {
+        try {
+          rightContent = await invoke<string>('read_file_content', {
+            filePath: `${currentPath.value}/${file.path}`
+          });
+        } catch (e) {
+          rightContent = '';
+        }
+      }
+    }
+
+    const isBinaryFile = leftContent === '[二进制文件]' || rightContent === '[二进制文件]';
 
     if (isBinaryFile) {
       const result = { leftLines: [], rightLines: [], isBinary: true, diffStats: null };
@@ -1740,7 +2269,7 @@ const loadFileDiff = async (file: FileNode, forceRefresh = false): Promise<{ lef
     if (fileStatus === 'deleted') {
       const alignedLeftLines: DiffLine[] = [];
       const alignedRightLines: DiffLine[] = [];
-      const oldLines = indexContent.split('\n');
+      const oldLines = rightContent.split('\n');
 
       for (let i = 0; i < oldLines.length; i++) {
         alignedLeftLines.push({
@@ -1767,9 +2296,40 @@ const loadFileDiff = async (file: FileNode, forceRefresh = false): Promise<{ lef
       return result;
     }
 
+    // 对于新增的文件，直接显示完整的新文件内容，所有行标记为 added
+    if (fileStatus === 'added') {
+      const alignedLeftLines: DiffLine[] = [];
+      const alignedRightLines: DiffLine[] = [];
+      const newLines = rightContent.split('\n');
+
+      for (let i = 0; i < newLines.length; i++) {
+        alignedLeftLines.push({
+          lineNum: 0,
+          content: '',
+          changeType: 'empty',
+          isDiff: false
+        });
+        alignedRightLines.push({
+          lineNum: i + 1,
+          content: newLines[i],
+          changeType: 'added',
+          isDiff: true
+        });
+      }
+
+      const result = {
+        leftLines: alignedLeftLines,
+        rightLines: alignedRightLines,
+        isBinary: false,
+        diffStats: { added: newLines.length, removed: 0, changed: 0 }
+      };
+      setDiffCache(cacheKey, result);
+      return result;
+    }
+
     const diffResult = await invoke<FileDiff>('compare_strings', {
-      oldContent: indexContent,
-      newContent: workContent
+      oldContent: leftContent,
+      newContent: rightContent
     });
 
     const alignedLeftLines: DiffLine[] = [];
@@ -2558,5 +3118,286 @@ const doTextCompare = async () => {
 .permission-actions .btn-secondary:hover {
   background-color: var(--bg-hover);
   color: var(--text-primary);
+}
+
+/* 项目设置弹窗样式 */
+.project-settings-dialog {
+  background-color: #ffffff;
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  width: 560px;
+  max-height: 85vh;
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+
+.settings-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px 24px;
+  border-bottom: 1px solid #f0f0f0;
+  background: linear-gradient(135deg, #fafafa 0%, #f5f5f5 100%);
+}
+
+.settings-header .close-btn {
+  background: none;
+  border: none;
+  font-size: 28px;
+  color: #888;
+  cursor: pointer;
+  padding: 0;
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 8px;
+  transition: all 0.2s;
+  line-height: 1;
+}
+
+.settings-header .close-btn:hover {
+  background-color: #f0f0f0;
+  color: #333;
+}
+
+.settings-header h3 {
+  margin: 0;
+  font-size: 17px;
+  font-weight: 600;
+  color: #1a1a1a;
+  letter-spacing: -0.3px;
+}
+
+.settings-content {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.settings-section {
+  margin-bottom: 28px;
+  background: #fafbfc;
+  border-radius: 10px;
+  padding: 20px;
+  border: 1px solid #f0f0f0;
+}
+
+.settings-section:last-child {
+  margin-bottom: 0;
+}
+
+.settings-section h4 {
+  margin: 0 0 16px 0;
+  font-size: 12px;
+  font-weight: 600;
+  color: #4a7eff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.settings-row {
+  display: flex;
+  align-items: center;
+  margin-bottom: 14px;
+  gap: 16px;
+}
+
+.settings-row:last-child {
+  margin-bottom: 0;
+}
+
+.settings-row.checkbox {
+  gap: 10px;
+  padding: 6px 0;
+}
+
+.settings-row.checkbox label {
+  margin-bottom: 0;
+  cursor: pointer;
+  font-size: 13px;
+  color: #444;
+  font-weight: 400;
+  user-select: none;
+}
+
+.settings-row.checkbox input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  cursor: pointer;
+  margin: 0;
+  accent-color: #4a7eff;
+  border-radius: 4px;
+}
+
+.settings-label {
+  width: 110px;
+  flex-shrink: 0;
+  font-size: 13px;
+  color: #555;
+  font-weight: 500;
+  text-align: left;
+  line-height: 1.4;
+}
+
+.settings-input {
+  flex: 1;
+  padding: 9px 14px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #333;
+  background-color: #fff;
+  transition: all 0.2s ease;
+  box-sizing: border-box;
+  min-width: 0;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.settings-input:focus {
+  outline: none;
+  border-color: #4a7eff;
+  box-shadow: 0 0 0 3px rgba(74, 126, 255, 0.12), inset 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.settings-input[readonly] {
+  background-color: #f8f9fa;
+  color: #888;
+  border-color: #e8e8e8;
+}
+
+.settings-select {
+  cursor: pointer;
+  appearance: none;
+  -webkit-appearance: none;
+  -moz-appearance: none;
+  padding: 9px 36px 9px 14px;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23666' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-repeat: no-repeat;
+  background-position: right 12px center;
+  background-size: 12px;
+}
+
+.settings-textarea {
+  flex: 1;
+  padding: 10px 14px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  font-size: 13px;
+  color: #333;
+  background-color: #fff;
+  resize: vertical;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  box-sizing: border-box;
+  min-width: 0;
+  line-height: 1.5;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.settings-textarea:focus {
+  outline: none;
+  border-color: #4a7eff;
+  box-shadow: 0 0 0 3px rgba(74, 126, 255, 0.12), inset 0 1px 2px rgba(0,0,0,0.04);
+}
+
+.settings-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+  padding: 16px 24px;
+  border-top: 1px solid #f0f0f0;
+  background-color: #fafafa;
+}
+
+.settings-actions .btn {
+  padding: 9px 20px;
+  border-radius: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  border: none;
+}
+
+.settings-actions .btn-secondary {
+  background-color: #fff;
+  border: 1px solid #ddd;
+  color: #555;
+}
+
+.settings-actions .btn-secondary:hover {
+  background-color: #f5f5f5;
+  border-color: #ccc;
+}
+
+.settings-actions .btn-primary {
+  background: linear-gradient(135deg, #4a7eff 0%, #3a6eef 100%);
+  color: #fff;
+  box-shadow: 0 2px 8px rgba(74, 126, 255, 0.3);
+}
+
+.settings-actions .btn-primary:hover {
+  background: linear-gradient(135deg, #3a6eef 0%, #2a5edf 100%);
+  box-shadow: 0 4px 12px rgba(74, 126, 255, 0.4);
+  transform: translateY(-1px);
+}
+
+/* 底部状态栏 */
+.status-bar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 12px;
+  height: 22px;
+  background-color: var(--accent-color, #4a7eff);
+  color: #fff;
+  font-size: 12px;
+  flex-shrink: 0;
+}
+
+.status-bar-left,
+.status-bar-right {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.status-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 3px;
+  cursor: default;
+  transition: background-color 0.15s;
+}
+
+.status-item:hover {
+  background-color: rgba(255, 255, 255, 0.15);
+}
+
+.status-icon {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.status-text {
+  font-size: 11px;
+  line-height: 1;
+}
+
+.status-add {
+  color: #a5d6a7;
+  font-size: 11px;
+  font-weight: 500;
+}
+
+.status-del {
+  color: #ef9a9a;
+  font-size: 11px;
+  font-weight: 500;
+  margin-left: 4px;
 }
 </style>

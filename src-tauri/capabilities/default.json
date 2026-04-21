@@ -16,7 +16,6 @@
     "fs:allow-write-text-file",
     "fs:allow-appdata-write",
     "fs:allow-appdata-write-recursive",
-    "fs:write-all",
-    "liquid-glass:default"
+    "fs:write-all"
   ]
 }

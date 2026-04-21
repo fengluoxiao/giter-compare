@@ -2,17 +2,24 @@ use serde::{Deserialize, Serialize};
 use std::process::Command;
 use std::sync::{Arc, Mutex};
 use git2::{Repository, StatusOptions, StatusShow};
-use notify::{RecommendedWatcher, RecursiveMode};
-use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
 use std::path::Path;
 use std::time::Duration;
 use tauri::{Emitter, Manager};
 
-// 声明 Swift 函数
+#[cfg(target_os = "macos")]
+use notify::{RecommendedWatcher, RecursiveMode};
+#[cfg(target_os = "macos")]
+use notify_debouncer_mini::{new_debouncer, DebouncedEventKind};
+
+// 声明 Objective-C 函数
 #[cfg(target_os = "macos")]
 extern "C" {
     fn swift_show_panel(content: *const i8, title: *const i8, button_text: *const i8);
     fn swift_show_alert(title: *const i8, message: *const i8, button_text: *const i8);
+    fn create_native_toolbar(window: *mut std::ffi::c_void);
+    fn get_clicked_toolbar_button() -> *mut i8;
+    fn set_toolbar_button_enabled(button_id: *const i8, enabled: i32);
+    fn set_toolbar_button_title(button_id: *const i8, title: *const i8);
 }
 
 // SwiftUI 相关数据结构
@@ -168,15 +175,31 @@ pub struct GrammarInfo {
 }
 
 // 全局文件监控器
+#[cfg(target_os = "macos")]
 struct FileWatcher {
     watcher: Option<notify_debouncer_mini::Debouncer<RecommendedWatcher>>,
     repo_path: Option<String>,
 }
 
+#[cfg(not(target_os = "macos"))]
+struct FileWatcher {
+    repo_path: Option<String>,
+}
+
+#[cfg(target_os = "macos")]
 impl FileWatcher {
     fn new() -> Self {
         Self {
             watcher: None,
+            repo_path: None,
+        }
+    }
+}
+
+#[cfg(not(target_os = "macos"))]
+impl FileWatcher {
+    fn new() -> Self {
+        Self {
             repo_path: None,
         }
     }
@@ -329,15 +352,20 @@ async fn get_file_content_at_revision(repo_path: String, file_path: String, revi
 
     let obj = repo
         .revparse_single(&revision)
-        .map_err(|e| format!("Failed to resolve revision: {}", e))?;
+        .map_err(|e| format!("Failed to resolve revision '{}': {}", revision, e))?;
 
-    let tree = obj
-        .peel_to_tree()
-        .map_err(|e| format!("Failed to peel to tree: {}", e))?;
+    // 先 peel 到 commit，然后获取 commit 的 tree
+    let commit = obj
+        .peel_to_commit()
+        .map_err(|e| format!("Failed to peel to commit: {}", e))?;
+
+    let tree = commit
+        .tree()
+        .map_err(|e| format!("Failed to get commit tree: {}", e))?;
 
     let entry = tree
         .get_path(Path::new(&file_path))
-        .map_err(|e| format!("Failed to get path: {}", e))?;
+        .map_err(|e| format!("Failed to get path '{}': {}", file_path, e))?;
 
     let blob = entry
         .to_object(&repo)
@@ -774,6 +802,7 @@ async fn get_all_tracked_files(repo_path: String) -> Result<String, String> {
 
 use tauri::State;
 
+#[cfg(target_os = "macos")]
 #[tauri::command]
 async fn start_file_watcher(
     repo_path: String,
@@ -837,12 +866,36 @@ async fn start_file_watcher(
     Ok(())
 }
 
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+async fn start_file_watcher(
+    _repo_path: String,
+    _window: tauri::Window,
+    file_watcher: State<'_, Arc<Mutex<FileWatcher>>>,
+) -> Result<(), String> {
+    println!("File watcher not supported on this platform");
+    let mut watcher_guard = file_watcher.lock().map_err(|e| e.to_string())?;
+    watcher_guard.repo_path = Some(_repo_path);
+    Ok(())
+}
+
+#[cfg(target_os = "macos")]
 #[tauri::command]
 async fn stop_file_watcher(
     file_watcher: State<'_, Arc<Mutex<FileWatcher>>>,
 ) -> Result<(), String> {
     let mut watcher_guard = file_watcher.lock().map_err(|e| e.to_string())?;
     watcher_guard.watcher = None;
+    watcher_guard.repo_path = None;
+    Ok(())
+}
+
+#[cfg(not(target_os = "macos"))]
+#[tauri::command]
+async fn stop_file_watcher(
+    file_watcher: State<'_, Arc<Mutex<FileWatcher>>>,
+) -> Result<(), String> {
+    let mut watcher_guard = file_watcher.lock().map_err(|e| e.to_string())?;
     watcher_guard.repo_path = None;
     Ok(())
 }
@@ -897,6 +950,122 @@ fn copy_dir(from: String, to: String) -> Result<(), String> {
 #[tauri::command]
 fn remove_dir(path: String) -> Result<(), String> {
     std::fs::remove_dir_all(&path).map_err(|e| format!("Failed to remove directory: {}", e))
+}
+
+#[tauri::command]
+async fn get_git_branches(repo_path: String) -> Result<Vec<String>, String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repository: {}", e))?;
+
+    let mut branches = Vec::new();
+
+    // 获取本地分支
+    let branch_names = repo.branches(None)
+        .map_err(|e| format!("Failed to get branches: {}", e))?;
+
+    for branch_result in branch_names {
+        let (branch, branch_type) = branch_result
+            .map_err(|e| format!("Failed to read branch: {}", e))?;
+
+        if branch_type == git2::BranchType::Local {
+            let name = branch.name()
+                .map_err(|e| format!("Failed to get branch name: {}", e))?
+                .unwrap_or("")
+                .to_string();
+            if !name.is_empty() {
+                branches.push(name);
+            }
+        }
+    }
+
+    // 获取当前分支并放到第一个
+    if let Ok(head) = repo.head() {
+        if let Some(name) = head.shorthand() {
+            let name = name.to_string();
+            branches.retain(|b| b != &name);
+            branches.insert(0, name);
+        }
+    }
+
+    Ok(branches)
+}
+
+#[tauri::command]
+async fn get_current_branch(repo_path: String) -> Result<String, String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repository: {}", e))?;
+
+    let head = repo.head()
+        .map_err(|e| format!("Failed to get HEAD: {}", e))?;
+
+    let branch_name = head.shorthand()
+        .unwrap_or("unknown")
+        .to_string();
+
+    Ok(branch_name)
+}
+
+#[derive(serde::Serialize)]
+struct CommitInfo {
+    hash: String,
+    short_hash: String,
+    message: String,
+    author: String,
+    date: String,
+}
+
+#[tauri::command]
+async fn get_commit_history(repo_path: String, limit: Option<usize>) -> Result<Vec<CommitInfo>, String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repository: {}", e))?;
+
+    let mut revwalk = repo.revwalk()
+        .map_err(|e| format!("Failed to create revwalk: {}", e))?;
+
+    revwalk.push_head()
+        .map_err(|e| format!("Failed to push HEAD: {}", e))?;
+
+    let limit = limit.unwrap_or(50);
+    let mut commits = Vec::new();
+
+    for (i, oid_result) in revwalk.enumerate() {
+        if i >= limit {
+            break;
+        }
+
+        let oid = oid_result.map_err(|e| format!("Failed to get oid: {}", e))?;
+        let commit = repo.find_commit(oid)
+            .map_err(|e| format!("Failed to find commit: {}", e))?;
+
+        let hash = oid.to_string();
+        let short_hash = hash.chars().take(7).collect::<String>();
+
+        let message = commit.message()
+            .unwrap_or("")
+            .lines()
+            .next()
+            .unwrap_or("")
+            .to_string();
+
+        let author = commit.author();
+        let author_name = author.name().unwrap_or("Unknown").to_string();
+
+        let time = commit.time();
+        let timestamp = time.seconds();
+        let datetime = chrono::DateTime::from_timestamp(timestamp, 0)
+            .unwrap_or_else(|| chrono::Utc::now());
+        let date_str = datetime.format("%Y-%m-%d %H:%M").to_string();
+
+        commits.push(CommitInfo {
+            hash,
+            short_hash,
+            message,
+            author: author_name,
+            date: date_str,
+        });
+    }
+
+    Ok(commits)
 }
 
 // 导入 VSCode 语法高亮插件
@@ -1232,19 +1401,147 @@ async fn show_context_menu(
     Ok(())
 }
 
+// 原生工具栏命令
+#[tauri::command]
+async fn create_native_toolbar_command(window: tauri::Window) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::c_void;
+        
+        // 在主线程执行
+        window.clone().run_on_main_thread(move || {
+            unsafe {
+                // 获取 NSWindow 指针
+                let ns_window = window.ns_window().unwrap() as *mut c_void;
+                create_native_toolbar(ns_window);
+            }
+        }).map_err(|e| e.to_string())?;
+        
+        Ok(())
+    }
+    
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("仅支持 macOS".to_string())
+    }
+}
+
+#[tauri::command]
+async fn set_toolbar_button_enabled_command(button_id: String, enabled: bool) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CString;
+        let id_cstring = CString::new(button_id).map_err(|e| e.to_string())?;
+        unsafe {
+            set_toolbar_button_enabled(id_cstring.as_ptr(), if enabled { 1 } else { 0 });
+        }
+        Ok(())
+    }
+    
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("仅支持 macOS".to_string())
+    }
+}
+
+#[tauri::command]
+async fn set_toolbar_button_title_command(button_id: String, title: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        use std::ffi::CString;
+        let id_cstring = CString::new(button_id).map_err(|e| e.to_string())?;
+        let title_cstring = CString::new(title).map_err(|e| e.to_string())?;
+        unsafe {
+            set_toolbar_button_title(id_cstring.as_ptr(), title_cstring.as_ptr());
+        }
+        Ok(())
+    }
+    
+    #[cfg(not(target_os = "macos"))]
+    {
+        Err("仅支持 macOS".to_string())
+    }
+}
+
+// 轮询获取点击的工具栏按钮
+#[tauri::command]
+async fn poll_toolbar_button_click() -> Result<Option<String>, String> {
+    #[cfg(target_os = "macos")]
+    {
+        unsafe {
+            let ptr = get_clicked_toolbar_button();
+            if ptr.is_null() {
+                Ok(None)
+            } else {
+                use std::ffi::CStr;
+                let c_str = CStr::from_ptr(ptr);
+                let result = c_str.to_str().map_err(|e| e.to_string())?.to_string();
+                libc::free(ptr as *mut libc::c_void);
+                Ok(Some(result))
+            }
+        }
+    }
+    
+    #[cfg(not(target_os = "macos"))]
+    {
+        Ok(None)
+    }
+}
+
 pub fn run() {
     let file_watcher = Arc::new(Mutex::new(FileWatcher::new()));
 
-    tauri::Builder::default()
+    let mut builder = tauri::Builder::default()
         .manage(file_watcher)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
         .plugin(tauri_plugin_fs::init())
-        .plugin(tauri_plugin_shell::init())
-        .plugin(tauri_plugin_liquid_glass::init())
+        .plugin(tauri_plugin_shell::init());
+    
+    // 仅在 macOS 上加载 liquid-glass 插件
+    #[cfg(target_os = "macos")]
+    {
+        builder = builder.plugin(tauri_plugin_liquid_glass::init());
+    }
+    
+    builder
+        .setup(|app| {
+            // 存储 AppHandle 以便在回调中使用
+            let app_handle = app.handle().clone();
+            
+            // 设置窗口效果
+            #[cfg(target_os = "macos")]
+            {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    // 使用 tauri-plugin-liquid-class 设置液态玻璃效果
+                    // macOS 14+ 支持液态玻璃效果
+                    // 使用默认标题栏样式
+                    let _ = window.set_title_bar_style(tauri::TitleBarStyle::default());
+                    
+                    // NSToolbar 将由前端通过插件创建
+                    println!("窗口已创建，等待前端创建 NSToolbar...");
+                }
+            }
+
+            #[cfg(target_os = "windows")]
+            {
+                use tauri::Manager;
+                if let Some(window) = app.get_webview_window("main") {
+                    // Windows 11 支持云母/亚克力效果
+                    let _ = window.set_decorations(true);
+                }
+            }
+
+            Ok(())
+        })
         .invoke_handler(tauri::generate_handler![
             open_swiftui_panel,
             show_native_alert,
+            create_native_toolbar_command,
+            set_toolbar_button_enabled_command,
+            set_toolbar_button_title_command,
+            poll_toolbar_button_click,
             get_git_diff,
             get_file_diff,
             get_working_tree_changes,
@@ -1270,34 +1567,11 @@ pub fn run() {
             open_in_explorer,
             search::search_in_file,
             search::search_in_directory,
-            show_context_menu
+            show_context_menu,
+            get_git_branches,
+            get_current_branch,
+            get_commit_history
         ])
-        .setup(|app| {
-            // 设置窗口效果
-            #[cfg(target_os = "macos")]
-            {
-                use tauri::Manager;
-                if let Some(window) = app.get_webview_window("main") {
-                    // 使用 tauri-plugin-liquid-class 设置液态玻璃效果
-                    // macOS 14+ 支持液态玻璃效果
-                    let _ = window.set_title_bar_style(tauri::TitleBarStyle::Transparent);
-                    
-                    // NSToolbar 将由前端通过插件创建
-                    println!("窗口已创建，等待前端创建 NSToolbar...");
-                }
-            }
-
-            #[cfg(target_os = "windows")]
-            {
-                use tauri::Manager;
-                if let Some(window) = app.get_webview_window("main") {
-                    // Windows 11 支持云母/亚克力效果
-                    let _ = window.set_decorations(true);
-                }
-            }
-
-            Ok(())
-        })
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
 }

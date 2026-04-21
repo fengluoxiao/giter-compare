@@ -156,6 +156,7 @@ const emit = defineEmits<{
   'export-projects': [];
   'import-projects': [];
   'switch-workspace': [workspaceId: string];
+  'project-settings': [project: Project];
 }>();
 
 const contextMenu = ref<ContextMenuState>({
@@ -222,9 +223,7 @@ const handleOpenInExplorer = async () => {
 // 项目设置
 const handleProjectSettings = () => {
   if (contextMenu.value.project) {
-    // TODO: 打开项目设置对话框
-    console.log('打开项目设置:', contextMenu.value.project);
-    alert('项目设置功能即将推出');
+    emit('project-settings', contextMenu.value.project);
   }
   hideContextMenu();
 };
