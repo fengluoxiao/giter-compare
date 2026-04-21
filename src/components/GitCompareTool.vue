@@ -2053,7 +2053,7 @@ const loadStagedFiles = async () => {
       }
     }));
 
-    stagedFiles.value = fileOnlyChanges
+    const finalChanges = fileOnlyChanges
       .filter(change => change !== null)
       .map(change => {
         const parts = (change as GitStatus).path.split(/[\\/]/);
@@ -2063,9 +2063,17 @@ const loadStagedFiles = async () => {
           status: (change as GitStatus).status
         };
       });
+    
+    stagedFiles.value = finalChanges;
+    
+    // 同时更新 gitChanges 和文件树状态
+    gitChanges.value = finalChanges;
+    updateFileTreeStatus(fileTree.value, finalChanges);
+    
   } catch (e) {
     console.error('Failed to load changed files:', e);
     stagedFiles.value = [];
+    gitChanges.value = [];
   }
 };
 
