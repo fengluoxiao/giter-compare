@@ -82,11 +82,11 @@
       <template v-else>
         <div class="diff-pane">
           <div class="pane-header">
-            <span class="pane-title">{{ isFileViewMode ? '文件内容' : 'HEAD' }}</span>
+            <span class="pane-title">{{ isFileViewMode ? '文件内容' : '旧版本' }}</span>
           </div>
           <div class="code-content" ref="leftCodeContent" @scroll="syncScroll('left')">
-            <ShikiDiffLines 
-              :lines="rightLines" 
+            <ShikiDiffLines
+              :lines="leftLines"
               :filename="currentFile?.path || ''"
               :theme="theme || 'light'"
               :search-matches="leftSearchMatches"
@@ -98,11 +98,11 @@
         <div class="diff-divider"></div>
         <div class="diff-pane">
           <div class="pane-header">
-            <span class="pane-title">{{ isFileViewMode ? '文件内容' : (viewMode === 'working' ? '工作区' : '暂存区') }}</span>
+            <span class="pane-title">{{ isFileViewMode ? '文件内容' : '新版本' }}</span>
           </div>
           <div class="code-content" ref="rightCodeContent" @scroll="syncScroll('right')">
-            <ShikiDiffLines 
-              :lines="leftLines" 
+            <ShikiDiffLines
+              :lines="rightLines"
               :filename="currentFile?.path || ''"
               :theme="theme || 'light'"
               :search-matches="rightSearchMatches"
