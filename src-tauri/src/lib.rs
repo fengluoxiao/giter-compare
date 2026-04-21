@@ -1507,7 +1507,7 @@ pub fn run() {
     builder
         .setup(|app| {
             // 存储 AppHandle 以便在回调中使用
-            let app_handle = app.handle().clone();
+            let _app_handle = app.handle().clone();
             
             // 设置窗口效果
             #[cfg(target_os = "macos")]
