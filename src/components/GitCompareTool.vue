@@ -12,8 +12,6 @@
       @navigate-prev="navigatePrev"
       @navigate-next="navigateNext"
       @refresh="handleRefresh"
-      @manage-plugins="showPluginManager = true"
-      @manage-workspace="showWorkspaceManager = true"
       @app-settings="showAppSettings = true"
     />
 
@@ -131,21 +129,6 @@
       @start-edit="startEditPendingName"
       @save-name="savePendingName"
       @cancel-edit="cancelEditPendingName"
-    />
-
-    <!-- 插件管理对话框 -->
-    <PluginManagerDialog
-      :open="showPluginManager"
-      @close="showPluginManager = false"
-      @plugins-changed="onPluginsChanged"
-    />
-
-    <!-- 工作区管理对话框 -->
-    <WorkspaceManagerDialog
-      :open="showWorkspaceManager"
-      :current-projects="projects"
-      @close="showWorkspaceManager = false"
-      @load-workspace="onLoadWorkspace"
     />
 
     <!-- 权限提示弹窗 -->
@@ -287,7 +270,7 @@
 
     <!-- 软件设置弹窗 -->
     <div v-if="showAppSettings" class="settings-dialog-overlay" @click="showAppSettings = false">
-      <div class="settings-dialog" @click.stop>
+      <div class="settings-dialog app-settings-dialog" @click.stop>
         <div class="settings-header">
           <h3>软件设置</h3>
           <button class="close-btn" @click="showAppSettings = false">
@@ -296,24 +279,158 @@
             </svg>
           </button>
         </div>
-        <div class="settings-body">
-          <!-- 界面设置 -->
-          <div class="settings-section">
-            <h4>界面设置</h4>
-            <div class="settings-row">
-              <button class="btn btn-secondary" @click="showWorkspaceManager = true; showAppSettings = false">
-                💼 打开工作区管理
-              </button>
+        <div class="app-settings-container">
+          <!-- 左侧标签页 -->
+          <div class="app-settings-tabs">
+            <div
+              v-for="tab in appSettingTabs"
+              :key="tab.key"
+              class="app-settings-tab"
+              :class="{ active: activeAppSettingTab === tab.key }"
+              @click="activeAppSettingTab = tab.key"
+            >
+              <span class="tab-icon">{{ tab.icon }}</span>
+              <span class="tab-label">{{ tab.label }}</span>
             </div>
-            <div class="settings-row">
-              <button class="btn btn-secondary" @click="showPluginManager = true; showAppSettings = false">
-                🔌 打开插件管理
-              </button>
+          </div>
+          <!-- 右侧内容区 -->
+          <div class="app-settings-content">
+            <!-- 外观设置 -->
+            <div v-if="activeAppSettingTab === 'appearance'" class="app-settings-panel">
+              <h4>外观设置</h4>
+              <div class="settings-row">
+                <label class="settings-label">主题模式</label>
+                <div class="theme-options">
+                  <button
+                    class="theme-option"
+                    :class="{ active: theme === 'light' }"
+                    @click="setTheme('light')"
+                  >
+                    <span class="theme-preview light-preview"></span>
+                    <span>浅色</span>
+                  </button>
+                  <button
+                    class="theme-option"
+                    :class="{ active: theme === 'dark' }"
+                    @click="setTheme('dark')"
+                  >
+                    <span class="theme-preview dark-preview"></span>
+                    <span>深色</span>
+                  </button>
+                </div>
+              </div>
             </div>
-            <div class="settings-row">
-              <button class="btn btn-secondary" @click="toggleTheme(); showAppSettings = false">
-                🌙 切换{{ theme === 'dark' ? '浅色' : '深色' }}模式
-              </button>
+
+            <!-- 工作区管理 -->
+            <div v-if="activeAppSettingTab === 'workspace'" class="app-settings-panel">
+              <h4>工作区管理</h4>
+              <!-- 导入项目 -->
+              <div class="settings-subsection">
+                <h5>导入项目</h5>
+                <button class="btn btn-secondary" @click="importProjectsFromFolder">
+                  📁 从文件夹导入项目
+                </button>
+              </div>
+              <!-- 保存当前工作区 -->
+              <div class="settings-subsection">
+                <h5>保存当前工作区</h5>
+                <div v-if="projects.length > 0" class="current-projects-mini">
+                  <div class="projects-header">当前项目列表 ({{ projects.length }}个)</div>
+                  <div class="projects-list-mini">
+                    <div v-for="project in projects" :key="project.id" class="project-item-mini">
+                      <span class="project-name">{{ project.name }}</span>
+                      <span class="project-path">{{ project.path }}</span>
+                    </div>
+                  </div>
+                </div>
+                <div v-else class="no-projects">当前没有项目</div>
+                <div class="input-group">
+                  <input
+                    v-model="newWorkspaceName"
+                    type="text"
+                    placeholder="输入工作区名称"
+                    class="settings-input"
+                    @keyup.enter="saveCurrentWorkspaceFromSettings"
+                  />
+                  <button
+                    class="btn btn-primary"
+                    @click="saveCurrentWorkspaceFromSettings"
+                    :disabled="!newWorkspaceName.trim()"
+                  >
+                    保存
+                  </button>
+                </div>
+              </div>
+              <!-- 已保存的工作区 -->
+              <div class="settings-subsection">
+                <h5>已保存的工作区</h5>
+                <div v-if="savedWorkspaces.length === 0" class="empty-state">暂无保存的工作区</div>
+                <div v-else class="workspace-list-mini">
+                  <div
+                    v-for="workspace in savedWorkspaces"
+                    :key="workspace.id"
+                    class="workspace-item-mini"
+                  >
+                    <div class="workspace-info">
+                      <span class="workspace-name">{{ workspace.name }}</span>
+                      <span class="workspace-meta">{{ workspace.projects.length }} 个项目 · {{ formatDate(workspace.createdAt) }}</span>
+                    </div>
+                    <div class="workspace-actions">
+                      <button class="btn btn-icon" @click="loadWorkspaceFromSettings(workspace)" title="加载">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                          <path d="M19 9h-4V3H9v6H5l7 7 7-7zM5 18v2h14v-2H5z"/>
+                        </svg>
+                      </button>
+                      <button class="btn btn-icon btn-danger" @click="deleteWorkspaceFromSettings(workspace.id)" title="删除">
+                        <svg viewBox="0 0 24 24" width="14" height="14" fill="currentColor">
+                          <path d="M6 19c0 1.1.9 2 2 2h8c1.1 0 2-.9 2-2V7H6v12zM19 4h-3.5l-1-1h-5l-1 1H5v2h14V4z"/>
+                        </svg>
+                      </button>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+
+            <!-- 插件管理 -->
+            <div v-if="activeAppSettingTab === 'plugins'" class="app-settings-panel">
+              <h4>语法高亮插件管理</h4>
+              <div class="builtin-notice">
+                <span class="notice-icon">ℹ️</span>
+                <span>已内置 Vue 语法高亮支持</span>
+              </div>
+              <!-- 已安装插件 -->
+              <div class="settings-subsection">
+                <h5>已安装插件</h5>
+                <div v-if="pluginLoading" class="loading-state">加载中...</div>
+                <div v-else-if="installedPlugins.length === 0" class="empty-state">暂无安装的插件</div>
+                <div v-else class="plugin-list-mini">
+                  <div v-for="plugin in installedPlugins" :key="plugin.id" class="plugin-item-mini">
+                    <div class="plugin-info">
+                      <div class="plugin-header">
+                        <span class="plugin-name">{{ plugin.name }}</span>
+                        <span class="plugin-version">v{{ plugin.version }}</span>
+                      </div>
+                      <div class="plugin-description">{{ plugin.description }}</div>
+                      <div class="plugin-grammars">
+                        <span v-for="grammar in plugin.grammars" :key="grammar.language" class="grammar-tag">
+                          {{ grammar.language }}
+                        </span>
+                      </div>
+                    </div>
+                    <button class="btn btn-danger btn-sm" @click="removePluginFromSettings(plugin.id)">删除</button>
+                  </div>
+                </div>
+              </div>
+              <!-- 导入插件 -->
+              <div class="settings-subsection">
+                <h5>导入新插件</h5>
+                <button class="btn btn-primary" @click="importPluginFromSettings" :disabled="pluginImporting">
+                  {{ pluginImporting ? '导入中...' : '📂 选择插件文件夹' }}
+                </button>
+                <span class="import-hint">选择 VSCode 语法高亮插件文件夹</span>
+                <div v-if="pluginImportError" class="import-error">{{ pluginImportError }}</div>
+              </div>
             </div>
           </div>
         </div>
@@ -375,7 +492,7 @@ import ProjectSidebar from './ProjectSidebar.vue';
 import FileTreeSidebar from './FileTreeSidebar.vue';
 import DiffViewer from './DiffViewer.vue';
 import TabBar, { type Tab } from './TabBar.vue';
-import { FileCompareDialog, TextCompareDialog, AddProjectDialog, PluginManagerDialog, WorkspaceManagerDialog, PromptDialog, GlobalSearchDialog } from './dialogs';
+import { FileCompareDialog, TextCompareDialog, AddProjectDialog, PromptDialog, GlobalSearchDialog } from './dialogs';
 
 interface FileNode {
   name: string;
@@ -427,12 +544,7 @@ interface Workspace {
   id: string;
   name: string;
   projects: Project[];
-}
-
-interface Workspace {
-  id: string;
-  name: string;
-  projects: Project[];
+  createdAt?: string;
 }
 
 // 主题和视图状态
@@ -448,11 +560,33 @@ const useNativeToolbar = ref(false);
 const showCompareFile = ref(false);
 const showTextCompare = ref(false);
 const showAddProject = ref(false);
-const showPluginManager = ref(false);
-const showWorkspaceManager = ref(false);
 const showPermissionDialog = ref(false);
 const showProjectSettings = ref(false);
 const showAppSettings = ref(false);
+const activeAppSettingTab = ref('appearance');
+const appSettingTabs = [
+  { key: 'appearance', label: '外观', icon: '🎨' },
+  { key: 'workspace', label: '工作区', icon: '💼' },
+  { key: 'plugins', label: '插件', icon: '🔌' },
+];
+
+// 工作区管理状态（软件设置内）
+const newWorkspaceName = ref('');
+const savedWorkspaces = ref<Workspace[]>([]);
+
+// 插件管理状态（软件设置内）
+interface PluginInfo {
+  id: string;
+  name: string;
+  description: string;
+  version: string;
+  grammars: { language: string; scope_name: string; path: string }[];
+}
+const installedPlugins = ref<PluginInfo[]>([]);
+const pluginLoading = ref(false);
+const pluginImporting = ref(false);
+const pluginImportError = ref('');
+
 const showPromptDialog = ref(false);
 
 // 项目设置
@@ -688,10 +822,12 @@ const promptTitle = ref('');
 const promptMessage = ref('');
 const promptValue = ref('');
 
-// 调试：监听 showPluginManager 变化
-watch(showPluginManager, (newVal, oldVal) => {
-  console.log('showPluginManager changed:', oldVal, '->', newVal);
-  console.trace('Stack trace:');
+// 监听软件设置弹窗打开，加载数据
+watch(showAppSettings, (newVal) => {
+  if (newVal) {
+    loadSavedWorkspaces();
+    loadPluginsFromSettings();
+  }
 });
 
 // 文件和数据状态
@@ -871,14 +1007,8 @@ onMounted(async () => {
       if (buttonId) {
         console.log('原生工具栏按钮点击:', buttonId);
         switch (buttonId) {
-          case 'workspace':
-            showWorkspaceManager.value = true;
-            break;
-          case 'plugins':
-            showPluginManager.value = true;
-            break;
-          case 'theme':
-            toggleTheme();
+          case 'settings':
+            showAppSettings.value = true;
             break;
           case 'prev':
             navigatePrev();
@@ -924,6 +1054,162 @@ const toggleTheme = () => {
   localStorage.setItem('theme', theme.value);
   // 设置 body 的 data-theme 属性，让对话框也能继承主题
   document.body.setAttribute('data-theme', theme.value);
+};
+
+const setTheme = (newTheme: string) => {
+  theme.value = newTheme;
+  localStorage.setItem('theme', theme.value);
+  document.body.setAttribute('data-theme', theme.value);
+};
+
+// ========== 软件设置 - 工作区管理函数 ==========
+
+const loadSavedWorkspaces = async () => {
+  try {
+    const { readTextFile } = await import('@tauri-apps/plugin-fs');
+    const { appDataDir, join } = await import('@tauri-apps/api/path');
+    const appData = await appDataDir();
+    const filePath = await join(appData, 'workspaces.json');
+    const content = await readTextFile(filePath);
+    savedWorkspaces.value = JSON.parse(content);
+  } catch (e) {
+    savedWorkspaces.value = [];
+  }
+};
+
+const saveWorkspacesToFile = async () => {
+  try {
+    const { writeTextFile, mkdir } = await import('@tauri-apps/plugin-fs');
+    const { appDataDir, join } = await import('@tauri-apps/api/path');
+    const { BaseDirectory } = await import('@tauri-apps/plugin-fs');
+    await mkdir('', { baseDir: BaseDirectory.AppData, recursive: true });
+    const appData = await appDataDir();
+    const filePath = await join(appData, 'workspaces.json');
+    await writeTextFile(filePath, JSON.stringify(savedWorkspaces.value, null, 2));
+  } catch (e) {
+    console.error('Failed to save workspaces:', e);
+  }
+};
+
+const importProjectsFromFolder = async () => {
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    const selected = await open({
+      directory: true,
+      multiple: true,
+      title: '选择 Git 项目文件夹'
+    });
+    if (selected && Array.isArray(selected)) {
+      const existingPaths = new Set(projects.value.map(p => p.path));
+      const newProjects: Project[] = [];
+      for (const path of selected) {
+        if (!existingPaths.has(path)) {
+          const parts = path.split(/[\\/]/);
+          newProjects.push({
+            id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+            name: parts[parts.length - 1] || parts[parts.length - 2] || '新项目',
+            path
+          });
+        }
+      }
+      if (newProjects.length > 0) {
+        projects.value.push(...newProjects);
+        saveWorkspaces();
+      }
+    }
+  } catch (e) {
+    console.error('Failed to import from folder:', e);
+  }
+};
+
+const saveCurrentWorkspaceFromSettings = async () => {
+  const name = newWorkspaceName.value.trim();
+  if (!name) return;
+  const workspace: Workspace = {
+    id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
+    name,
+    projects: [...projects.value],
+    createdAt: new Date().toISOString()
+  };
+  savedWorkspaces.value.unshift(workspace);
+  await saveWorkspacesToFile();
+  newWorkspaceName.value = '';
+};
+
+const loadWorkspaceFromSettings = (workspace: Workspace) => {
+  const existingPaths = new Set(projects.value.map(p => p.path));
+  for (const project of workspace.projects) {
+    if (!existingPaths.has(project.path)) {
+      projects.value.push({ ...project });
+    }
+  }
+  saveWorkspaces();
+};
+
+const deleteWorkspaceFromSettings = async (id: string) => {
+  const index = savedWorkspaces.value.findIndex(w => w.id === id);
+  if (index > -1) {
+    savedWorkspaces.value.splice(index, 1);
+    await saveWorkspacesToFile();
+  }
+};
+
+const formatDate = (dateStr: string): string => {
+  const date = new Date(dateStr);
+  return date.toLocaleDateString() + ' ' + date.toLocaleTimeString();
+};
+
+// ========== 软件设置 - 插件管理函数 ==========
+
+const loadPluginsFromSettings = async () => {
+  pluginLoading.value = true;
+  try {
+    const result = await invoke<PluginInfo[]>('get_installed_plugins');
+    installedPlugins.value = result;
+  } catch (e) {
+    console.error('Failed to load plugins:', e);
+  } finally {
+    pluginLoading.value = false;
+  }
+};
+
+const importPluginFromSettings = async () => {
+  pluginImportError.value = '';
+  try {
+    const { open } = await import('@tauri-apps/plugin-dialog');
+    const selected = await open({
+      directory: true,
+      multiple: false,
+      title: '选择 VSCode 语法高亮插件文件夹'
+    });
+    if (selected && typeof selected === 'string') {
+      pluginImporting.value = true;
+      try {
+        await invoke<PluginInfo>('import_vscode_plugin', {
+          pluginPath: selected
+        });
+        await loadPluginsFromSettings();
+        onPluginsChanged();
+      } catch (e) {
+        pluginImportError.value = `导入失败: ${e}`;
+      } finally {
+        pluginImporting.value = false;
+      }
+    }
+  } catch (e) {
+    pluginImportError.value = `选择文件夹失败: ${e}`;
+  }
+};
+
+const removePluginFromSettings = async (pluginId: string) => {
+  if (!confirm('确定要删除这个插件吗？')) return;
+  try {
+    await invoke('remove_plugin', { pluginId });
+    await loadPluginsFromSettings();
+    onPluginsChanged();
+  } catch (e) {
+    alert(`删除失败: ${e}`);
+  }
 };
 
 // 显示所有文件切换
@@ -1776,24 +2062,6 @@ const openSystemSettings = async () => {
     // 如果命令失败，尝试用浏览器打开设置页面
     window.open('x-apple.systempreferences:com.apple.preference.security?Privacy_AllFiles', '_blank');
   }
-};
-
-// 加载工作区
-const onLoadWorkspace = (workspaceProjects: Project[]) => {
-  // 合并工作区项目到现有项目，避免重复
-  const existingPaths = new Set(projects.value.map(p => p.path));
-
-  for (const project of workspaceProjects) {
-    if (!existingPaths.has(project.path)) {
-      projects.value.push({
-        id: Date.now().toString() + Math.random().toString(36).substr(2, 9),
-        name: project.name,
-        path: project.path
-      });
-    }
-  }
-
-  saveWorkspaces();
 };
 
 // 侧边栏折叠/展开
@@ -3112,6 +3380,46 @@ const doTextCompare = async () => {
   flex-direction: column;
 }
 
+/* 软件设置弹窗样式 */
+.settings-dialog-overlay {
+  position: fixed;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background-color: rgba(0, 0, 0, 0.5);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  z-index: 9999;
+}
+
+.settings-dialog {
+  background-color: var(--bg-primary);
+  border-radius: 12px;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.15);
+  width: 90%;
+  max-width: 500px;
+  max-height: 85vh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+}
+
+.settings-body {
+  padding: 24px;
+  overflow-y: auto;
+  flex: 1;
+}
+
+.settings-actions {
+  padding: 16px 24px;
+  border-top: 1px solid #f0f0f0;
+  display: flex;
+  justify-content: flex-end;
+  gap: 12px;
+}
+
 .permission-header {
   display: flex;
   justify-content: space-between;
@@ -3330,6 +3638,13 @@ const doTextCompare = async () => {
   line-height: 1.4;
 }
 
+.input-group {
+  display: flex;
+  gap: 8px;
+  margin-top: 16px;
+  align-items: center;
+}
+
 .settings-input {
   flex: 1;
   padding: 9px 14px;
@@ -3430,6 +3745,585 @@ const doTextCompare = async () => {
   background: linear-gradient(135deg, #3a6eef 0%, #2a5edf 100%);
   box-shadow: 0 4px 12px rgba(74, 126, 255, 0.4);
   transform: translateY(-1px);
+}
+
+/* ========== 软件设置弹窗样式 ========== */
+
+.app-settings-dialog {
+  width: 90%;
+  max-width: 800px;
+  max-height: 85vh;
+}
+
+.app-settings-container {
+  display: flex;
+  flex: 1;
+  overflow: hidden;
+  min-height: 400px;
+}
+
+.app-settings-tabs {
+  width: 160px;
+  background-color: #f8f9fa;
+  border-right: 1px solid #e8e8e8;
+  padding: 16px 0;
+  flex-shrink: 0;
+}
+
+.app-settings-tab {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 12px 20px;
+  cursor: pointer;
+  transition: all 0.2s;
+  border-left: 3px solid transparent;
+  color: #666;
+  font-size: 14px;
+}
+
+.app-settings-tab:hover {
+  background-color: #f0f1f2;
+  color: #333;
+}
+
+.app-settings-tab.active {
+  background-color: #fff;
+  border-left-color: #4a7eff;
+  color: #4a7eff;
+  font-weight: 500;
+}
+
+.tab-icon {
+  font-size: 16px;
+}
+
+.tab-label {
+  font-size: 14px;
+}
+
+.app-settings-content {
+  flex: 1;
+  overflow-y: auto;
+  padding: 24px;
+}
+
+.app-settings-panel h4 {
+  margin: 0 0 20px 0;
+  font-size: 16px;
+  font-weight: 600;
+  color: #1a1a1a;
+}
+
+.settings-subsection {
+  margin-bottom: 24px;
+  padding: 16px;
+  background: #fafbfc;
+  border-radius: 10px;
+  border: 1px solid #f0f0f0;
+}
+
+.settings-subsection h5 {
+  margin: 0 0 12px 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: #4a7eff;
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+/* 主题选项 */
+.theme-options {
+  display: flex;
+  gap: 16px;
+  margin-top: 8px;
+}
+
+.theme-option {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 8px;
+  padding: 16px 24px;
+  border: 2px solid #e0e0e0;
+  border-radius: 12px;
+  cursor: pointer;
+  transition: all 0.2s;
+  background: #fff;
+}
+
+.theme-option:hover {
+  border-color: #b0b0b0;
+}
+
+.theme-option.active {
+  border-color: #4a7eff;
+  background: #f0f4ff;
+}
+
+.theme-preview {
+  width: 48px;
+  height: 48px;
+  border-radius: 8px;
+  border: 1px solid #ddd;
+}
+
+.light-preview {
+  background: linear-gradient(135deg, #ffffff 0%, #f5f5f5 100%);
+}
+
+.dark-preview {
+  background: linear-gradient(135deg, #2d2d2d 0%, #1a1a1a 100%);
+}
+
+/* 工作区列表 */
+.current-projects-mini {
+  margin-bottom: 12px;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+  overflow: hidden;
+}
+
+.projects-header {
+  font-size: 12px;
+  font-weight: 500;
+  color: #666;
+  padding: 8px 12px;
+  background: #f0f0f0;
+  border-bottom: 1px solid #e0e0e0;
+}
+
+.projects-list-mini {
+  max-height: 150px;
+  overflow-y: auto;
+  padding: 8px;
+}
+
+.project-item-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 6px 8px;
+  border-radius: 4px;
+}
+
+.project-item-mini:hover {
+  background: #f0f0f0;
+}
+
+.project-item-mini .project-name {
+  font-size: 13px;
+  font-weight: 500;
+  color: #333;
+}
+
+.project-item-mini .project-path {
+  font-size: 11px;
+  color: #999;
+}
+
+.no-projects {
+  padding: 16px;
+  text-align: center;
+  color: #999;
+  font-size: 13px;
+}
+
+.workspace-list-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.workspace-item-mini {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+}
+
+.workspace-item-mini:hover {
+  border-color: #c0c0c0;
+}
+
+.workspace-item-mini .workspace-info {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.workspace-item-mini .workspace-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+.workspace-item-mini .workspace-meta {
+  font-size: 12px;
+  color: #999;
+}
+
+.workspace-item-mini .workspace-actions {
+  display: flex;
+  gap: 6px;
+}
+
+/* 插件列表 */
+.builtin-notice {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  background: #e8f2ff;
+  border-radius: 6px;
+  margin-bottom: 16px;
+  font-size: 13px;
+  color: #4a7eff;
+}
+
+.plugin-list-mini {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.plugin-item-mini {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px;
+  background: #fff;
+  border: 1px solid #e0e0e0;
+  border-radius: 8px;
+}
+
+.plugin-item-mini .plugin-info {
+  flex: 1;
+}
+
+.plugin-item-mini .plugin-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-bottom: 4px;
+}
+
+.plugin-item-mini .plugin-name {
+  font-size: 14px;
+  font-weight: 500;
+  color: #333;
+}
+
+.plugin-item-mini .plugin-version {
+  font-size: 12px;
+  color: #999;
+}
+
+.plugin-item-mini .plugin-description {
+  font-size: 12px;
+  color: #666;
+  margin-bottom: 6px;
+}
+
+.plugin-grammars {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.grammar-tag {
+  font-size: 11px;
+  padding: 2px 8px;
+  background: #f0f0f0;
+  border-radius: 4px;
+  color: #666;
+}
+
+.import-hint {
+  margin-left: 12px;
+  font-size: 12px;
+  color: #999;
+}
+
+.import-error {
+  margin-top: 8px;
+  padding: 8px 12px;
+  background: #fff2f0;
+  border: 1px solid #ffccc7;
+  border-radius: 6px;
+  color: #ff4d4f;
+  font-size: 13px;
+}
+
+.loading-state,
+.empty-state {
+  padding: 24px;
+  text-align: center;
+  color: #999;
+  font-size: 13px;
+}
+
+.btn-sm {
+  padding: 6px 12px;
+  font-size: 12px;
+}
+
+/* ========== 软件设置弹窗深色模式适配 ========== */
+
+/* 深色模式下使用 CSS 变量 */
+[data-theme="dark"] .app-settings-dialog .settings-header {
+  background: linear-gradient(135deg, #2d2d30 0%, #252526 100%);
+  border-bottom-color: #3e3e42;
+}
+
+[data-theme="dark"] .app-settings-dialog .settings-header h3 {
+  color: #cccccc;
+}
+
+[data-theme="dark"] .app-settings-dialog .settings-header .close-btn {
+  color: #858585;
+}
+
+[data-theme="dark"] .app-settings-dialog .settings-header .close-btn:hover {
+  background-color: #3e3e42;
+  color: #cccccc;
+}
+
+[data-theme="dark"] .app-settings-tabs {
+  background-color: #252526;
+  border-right-color: #3e3e42;
+}
+
+[data-theme="dark"] .app-settings-tab {
+  color: #858585;
+}
+
+[data-theme="dark"] .app-settings-tab:hover {
+  background-color: #2a2d2e;
+  color: #cccccc;
+}
+
+[data-theme="dark"] .app-settings-tab.active {
+  background-color: #1e1e1e;
+  border-left-color: #007acc;
+  color: #007acc;
+}
+
+[data-theme="dark"] .app-settings-content {
+  background-color: #1e1e1e;
+}
+
+[data-theme="dark"] .app-settings-panel h4 {
+  color: #cccccc;
+}
+
+[data-theme="dark"] .settings-subsection {
+  background: #252526;
+  border-color: #3e3e42;
+}
+
+[data-theme="dark"] .settings-subsection h5 {
+  color: #58a6ff;
+}
+
+[data-theme="dark"] .theme-option {
+  background: #252526;
+  border-color: #3e3e42;
+  color: #cccccc;
+}
+
+[data-theme="dark"] .theme-option:hover {
+  border-color: #555;
+}
+
+[data-theme="dark"] .theme-option.active {
+  border-color: #007acc;
+  background: #1e3a5f;
+}
+
+[data-theme="dark"] .current-projects-mini {
+  border-color: #3e3e42;
+}
+
+[data-theme="dark"] .projects-header {
+  background: #2d2d30;
+  color: #858585;
+  border-bottom-color: #3e3e42;
+}
+
+[data-theme="dark"] .project-item-mini:hover {
+  background: #2a2d2e;
+}
+
+[data-theme="dark"] .project-item-mini .project-name {
+  color: #cccccc;
+}
+
+[data-theme="dark"] .project-item-mini .project-path {
+  color: #858585;
+}
+
+[data-theme="dark"] .no-projects {
+  color: #858585;
+}
+
+[data-theme="dark"] .workspace-item-mini {
+  background: #252526;
+  border-color: #3e3e42;
+}
+
+[data-theme="dark"] .workspace-item-mini:hover {
+  border-color: #555;
+}
+
+[data-theme="dark"] .workspace-item-mini .workspace-name {
+  color: #cccccc;
+}
+
+[data-theme="dark"] .workspace-item-mini .workspace-meta {
+  color: #858585;
+}
+
+[data-theme="dark"] .builtin-notice {
+  background: #1e3a5f;
+  color: #58a6ff;
+}
+
+[data-theme="dark"] .plugin-item-mini {
+  background: #252526;
+  border-color: #3e3e42;
+}
+
+[data-theme="dark"] .plugin-item-mini .plugin-name {
+  color: #cccccc;
+}
+
+[data-theme="dark"] .plugin-item-mini .plugin-version {
+  color: #858585;
+}
+
+[data-theme="dark"] .plugin-item-mini .plugin-description {
+  color: #858585;
+}
+
+[data-theme="dark"] .grammar-tag {
+  background: #2d2d30;
+  color: #858585;
+}
+
+[data-theme="dark"] .import-hint {
+  color: #858585;
+}
+
+[data-theme="dark"] .import-error {
+  background: #4d1e1e;
+  border-color: #ff6b6b;
+  color: #ffa198;
+}
+
+[data-theme="dark"] .loading-state,
+[data-theme="dark"] .empty-state {
+  color: #858585;
+}
+
+[data-theme="dark"] .settings-actions {
+  background-color: #252526;
+  border-top-color: #3e3e42;
+}
+
+[data-theme="dark"] .settings-input {
+  background-color: #3c3c3c;
+  border-color: #3e3e42;
+  color: #cccccc;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
+}
+
+[data-theme="dark"] .settings-input::placeholder {
+  color: #6e6e6e;
+}
+
+[data-theme="dark"] .settings-input:focus {
+  border-color: #4a7eff;
+  box-shadow: 0 0 0 3px rgba(74, 126, 255, 0.2), inset 0 1px 2px rgba(0,0,0,0.2);
+}
+
+[data-theme="dark"] .settings-input[readonly] {
+  background-color: #2d2d30;
+  color: #6e6e6e;
+  border-color: #3e3e42;
+}
+
+/* ========== 项目设置弹窗深色模式适配 ========== */
+
+[data-theme="dark"] .project-settings-dialog {
+  background-color: #252526;
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.4);
+}
+
+[data-theme="dark"] .project-settings-dialog .settings-header {
+  background: linear-gradient(135deg, #2d2d30 0%, #252526 100%);
+  border-bottom-color: #3e3e42;
+}
+
+[data-theme="dark"] .project-settings-dialog .settings-header h3 {
+  color: #cccccc;
+}
+
+[data-theme="dark"] .project-settings-dialog .settings-header .close-btn {
+  color: #858585;
+}
+
+[data-theme="dark"] .project-settings-dialog .settings-header .close-btn:hover {
+  background-color: #3e3e42;
+  color: #cccccc;
+}
+
+[data-theme="dark"] .project-settings-dialog .settings-content {
+  background-color: #252526;
+}
+
+[data-theme="dark"] .project-settings-dialog .settings-section {
+  background: #2d2d30;
+  border-color: #3e3e42;
+}
+
+[data-theme="dark"] .project-settings-dialog .settings-section h4 {
+  color: #4a7eff;
+}
+
+[data-theme="dark"] .project-settings-dialog .settings-label {
+  color: #cccccc;
+}
+
+[data-theme="dark"] .project-settings-dialog .settings-row.checkbox label {
+  color: #cccccc;
+}
+
+[data-theme="dark"] .project-settings-dialog .settings-select {
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='12' height='12' viewBox='0 0 12 12'%3E%3Cpath fill='%23cccccc' d='M6 8L1 3h10z'/%3E%3C/svg%3E");
+  background-color: #3c3c3c;
+  border-color: #3e3e42;
+  color: #cccccc;
+}
+
+[data-theme="dark"] .project-settings-dialog .settings-textarea {
+  background-color: #3c3c3c;
+  border-color: #3e3e42;
+  color: #cccccc;
+  box-shadow: inset 0 1px 2px rgba(0,0,0,0.2);
+}
+
+[data-theme="dark"] .project-settings-dialog .settings-textarea:focus {
+  border-color: #4a7eff;
+  box-shadow: 0 0 0 3px rgba(74, 126, 255, 0.2), inset 0 1px 2px rgba(0,0,0,0.2);
+}
+
+[data-theme="dark"] .project-settings-dialog .settings-actions {
+  background-color: #252526;
+  border-top-color: #3e3e42;
 }
 
 /* 底部状态栏 */

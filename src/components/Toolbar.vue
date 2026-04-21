@@ -42,13 +42,9 @@ defineProps<{
 const emit = defineEmits<{
   'compare-file': [];
   'compare-text': [];
-  'toggle-theme': [];
   'navigate-prev': [];
   'navigate-next': [];
   'refresh': [event?: MouseEvent];
-  'manage-plugins': [];
-  'manage-workspace': [];
-  'project-settings': [];
   'app-settings': [];
 }>();
 
