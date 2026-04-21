@@ -3,8 +3,12 @@ use std::process::Command;
 use std::sync::{Arc, Mutex};
 use git2::{Repository, StatusOptions, StatusShow};
 use std::path::Path;
+use tauri::Manager;
+
+#[cfg(target_os = "macos")]
 use std::time::Duration;
-use tauri::{Emitter, Manager};
+#[cfg(target_os = "macos")]
+use tauri::Emitter;
 
 #[cfg(target_os = "macos")]
 use notify::{RecommendedWatcher, RecursiveMode};
@@ -1403,64 +1407,61 @@ async fn show_context_menu(
 
 // 原生工具栏命令
 #[tauri::command]
+#[cfg(target_os = "macos")]
 async fn create_native_toolbar_command(window: tauri::Window) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        use std::ffi::c_void;
-        
-        // 在主线程执行
-        window.clone().run_on_main_thread(move || {
-            unsafe {
-                // 获取 NSWindow 指针
-                let ns_window = window.ns_window().unwrap() as *mut c_void;
-                create_native_toolbar(ns_window);
-            }
-        }).map_err(|e| e.to_string())?;
-        
-        Ok(())
-    }
+    use std::ffi::c_void;
     
-    #[cfg(not(target_os = "macos"))]
-    {
-        Err("仅支持 macOS".to_string())
-    }
+    // 在主线程执行
+    window.clone().run_on_main_thread(move || {
+        unsafe {
+            // 获取 NSWindow 指针
+            let ns_window = window.ns_window().unwrap() as *mut c_void;
+            create_native_toolbar(ns_window);
+        }
+    }).map_err(|e| e.to_string())?;
+    
+    Ok(())
 }
 
 #[tauri::command]
+#[cfg(not(target_os = "macos"))]
+async fn create_native_toolbar_command(_window: tauri::Window) -> Result<(), String> {
+    Err("仅支持 macOS".to_string())
+}
+
+#[tauri::command]
+#[cfg(target_os = "macos")]
 async fn set_toolbar_button_enabled_command(button_id: String, enabled: bool) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        use std::ffi::CString;
-        let id_cstring = CString::new(button_id).map_err(|e| e.to_string())?;
-        unsafe {
-            set_toolbar_button_enabled(id_cstring.as_ptr(), if enabled { 1 } else { 0 });
-        }
-        Ok(())
+    use std::ffi::CString;
+    let id_cstring = CString::new(button_id).map_err(|e| e.to_string())?;
+    unsafe {
+        set_toolbar_button_enabled(id_cstring.as_ptr(), if enabled { 1 } else { 0 });
     }
-    
-    #[cfg(not(target_os = "macos"))]
-    {
-        Err("仅支持 macOS".to_string())
-    }
+    Ok(())
 }
 
 #[tauri::command]
+#[cfg(not(target_os = "macos"))]
+async fn set_toolbar_button_enabled_command(_button_id: String, _enabled: bool) -> Result<(), String> {
+    Err("仅支持 macOS".to_string())
+}
+
+#[tauri::command]
+#[cfg(target_os = "macos")]
 async fn set_toolbar_button_title_command(button_id: String, title: String) -> Result<(), String> {
-    #[cfg(target_os = "macos")]
-    {
-        use std::ffi::CString;
-        let id_cstring = CString::new(button_id).map_err(|e| e.to_string())?;
-        let title_cstring = CString::new(title).map_err(|e| e.to_string())?;
-        unsafe {
-            set_toolbar_button_title(id_cstring.as_ptr(), title_cstring.as_ptr());
-        }
-        Ok(())
+    use std::ffi::CString;
+    let id_cstring = CString::new(button_id).map_err(|e| e.to_string())?;
+    let title_cstring = CString::new(title).map_err(|e| e.to_string())?;
+    unsafe {
+        set_toolbar_button_title(id_cstring.as_ptr(), title_cstring.as_ptr());
     }
-    
-    #[cfg(not(target_os = "macos"))]
-    {
-        Err("仅支持 macOS".to_string())
-    }
+    Ok(())
+}
+
+#[tauri::command]
+#[cfg(not(target_os = "macos"))]
+async fn set_toolbar_button_title_command(_button_id: String, _title: String) -> Result<(), String> {
+    Err("仅支持 macOS".to_string())
 }
 
 // 轮询获取点击的工具栏按钮
@@ -1491,7 +1492,16 @@ async fn poll_toolbar_button_click() -> Result<Option<String>, String> {
 pub fn run() {
     let file_watcher = Arc::new(Mutex::new(FileWatcher::new()));
 
+    #[cfg(target_os = "macos")]
     let mut builder = tauri::Builder::default()
+        .manage(file_watcher)
+        .plugin(tauri_plugin_opener::init())
+        .plugin(tauri_plugin_dialog::init())
+        .plugin(tauri_plugin_fs::init())
+        .plugin(tauri_plugin_shell::init());
+    
+    #[cfg(not(target_os = "macos"))]
+    let builder = tauri::Builder::default()
         .manage(file_watcher)
         .plugin(tauri_plugin_opener::init())
         .plugin(tauri_plugin_dialog::init())
