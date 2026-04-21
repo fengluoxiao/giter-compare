@@ -14,14 +14,8 @@
       <!-- 中间区域留白 -->
     </div>
     <div class="toolbar-right">
-      <button class="btn btn-secondary" @click="$emit('manage-workspace')" title="工作区管理">
-        💼 工作区
-      </button>
-      <button class="btn btn-secondary" @click="$emit('manage-plugins')" title="语法高亮插件">
-        🔌 插件
-      </button>
-      <button class="btn btn-secondary" @click="$emit('toggle-theme')" title="切换主题">
-        {{ theme === 'dark' ? '☀️ 浅色' : '🌙 深色' }}
+      <button class="btn btn-secondary" @click="$emit('app-settings')" title="全局设置">
+        ⚙️ 设置
       </button>
       <button class="btn btn-secondary" @click="$emit('navigate-prev')" title="上一个" :disabled="!hasPrev">
         ⬆️ 上一个
@@ -51,10 +45,11 @@ const emit = defineEmits<{
   'toggle-theme': [];
   'navigate-prev': [];
   'navigate-next': [];
-  'refresh': [];
+  'refresh': [event?: MouseEvent];
   'manage-plugins': [];
   'manage-workspace': [];
   'project-settings': [];
+  'app-settings': [];
 }>();
 
 // 原生测试功能已移除

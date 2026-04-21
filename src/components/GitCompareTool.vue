@@ -14,6 +14,7 @@
       @refresh="handleRefresh"
       @manage-plugins="showPluginManager = true"
       @manage-workspace="showWorkspaceManager = true"
+      @app-settings="showAppSettings = true"
     />
 
     <!-- 标签栏 -->
@@ -276,29 +277,48 @@
             </div>
           </div>
 
+        </div>
+        <div class="settings-actions">
+          <button class="btn btn-secondary" @click="showProjectSettings = false">取消</button>
+          <button class="btn btn-primary" @click="saveProjectSettings">保存设置</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 软件设置弹窗 -->
+    <div v-if="showAppSettings" class="settings-dialog-overlay" @click="showAppSettings = false">
+      <div class="settings-dialog" @click.stop>
+        <div class="settings-header">
+          <h3>软件设置</h3>
+          <button class="close-btn" @click="showAppSettings = false">
+            <svg viewBox="0 0 24 24" width="16" height="16">
+              <path fill="currentColor" d="M19 6.41L17.59 5 12 10.59 6.41 5 5 6.41 10.59 12 5 17.59 6.41 19 12 13.41 17.59 19 19 17.59 13.41 12z"/>
+            </svg>
+          </button>
+        </div>
+        <div class="settings-body">
           <!-- 界面设置 -->
           <div class="settings-section">
             <h4>界面设置</h4>
             <div class="settings-row">
-              <button class="btn btn-secondary" @click="showWorkspaceManager = true; showProjectSettings = false">
+              <button class="btn btn-secondary" @click="showWorkspaceManager = true; showAppSettings = false">
                 💼 打开工作区管理
               </button>
             </div>
             <div class="settings-row">
-              <button class="btn btn-secondary" @click="showPluginManager = true; showProjectSettings = false">
+              <button class="btn btn-secondary" @click="showPluginManager = true; showAppSettings = false">
                 🔌 打开插件管理
               </button>
             </div>
             <div class="settings-row">
-              <button class="btn btn-secondary" @click="toggleTheme(); showProjectSettings = false">
+              <button class="btn btn-secondary" @click="toggleTheme(); showAppSettings = false">
                 🌙 切换{{ theme === 'dark' ? '浅色' : '深色' }}模式
               </button>
             </div>
           </div>
         </div>
         <div class="settings-actions">
-          <button class="btn btn-secondary" @click="showProjectSettings = false">取消</button>
-          <button class="btn btn-primary" @click="saveProjectSettings">保存设置</button>
+          <button class="btn btn-primary" @click="showAppSettings = false">关闭</button>
         </div>
       </div>
     </div>
@@ -432,6 +452,7 @@ const showPluginManager = ref(false);
 const showWorkspaceManager = ref(false);
 const showPermissionDialog = ref(false);
 const showProjectSettings = ref(false);
+const showAppSettings = ref(false);
 const showPromptDialog = ref(false);
 
 // 项目设置
