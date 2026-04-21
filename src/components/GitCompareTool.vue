@@ -216,7 +216,7 @@
             <h4>比对版本</h4>
             <div class="settings-row">
               <label class="settings-label">旧版本</label>
-              <select v-model="projectSettings.leftVersion" class="settings-input settings-select" @change="onOldVersionChange">
+              <select v-model="projectSettings.leftVersion" class="settings-input settings-select" @change="onSettingsOldVersionChange">
                 <option v-for="commit in commitList" :key="commit.hash" :value="commit.hash">
                   {{ commit.short_hash }} - {{ commit.message }}
                 </option>
@@ -224,7 +224,7 @@
             </div>
             <div class="settings-row">
               <label class="settings-label">新版本</label>
-              <select v-model="projectSettings.rightVersion" class="settings-input settings-select">
+              <select v-model="projectSettings.rightVersion" class="settings-input settings-select" @change="onSettingsNewVersionChange">
                 <option value="WORKING">工作区 (最新未提交)</option>
                 <option v-for="commit in availableNewVersions" :key="commit.hash" :value="commit.hash">
                   {{ commit.short_hash }} - {{ commit.message }}
@@ -495,6 +495,17 @@ const onOldVersionChange = () => {
       }
     }
   }
+};
+
+// 项目设置弹窗 - 旧版本变更处理
+const onSettingsOldVersionChange = async () => {
+  onOldVersionChange();
+  await saveAndRefreshVersions();
+};
+
+// 项目设置弹窗 - 新版本变更处理
+const onSettingsNewVersionChange = async () => {
+  await saveAndRefreshVersions();
 };
 
 // DiffViewer 版本变更处理
