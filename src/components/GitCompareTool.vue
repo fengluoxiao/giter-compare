@@ -462,7 +462,7 @@ interface CommitInfo {
 }
 const commitList = ref<CommitInfo[]>([]);
 
-// 项目版本设置缓存（内存存储，不持久化）
+// 内存中存储每个项目的版本设置（不持久化，重启后恢复默认）
 const projectVersionSettings = new Map<string, { leftVersion: string; rightVersion: string }>();
 
 // 根据旧版本选择，计算可用的新版本列表
@@ -511,7 +511,7 @@ const onDiffNewVersionChange = async (version: string) => {
 
 // 保存版本设置并刷新
 const saveAndRefreshVersions = async () => {
-  // 保存到内存缓存
+  // 保存到内存 Map（不持久化，重启后恢复默认）
   if (projectSettings.value.path) {
     projectVersionSettings.set(projectSettings.value.path, {
       leftVersion: projectSettings.value.leftVersion,
@@ -587,7 +587,7 @@ const openProjectSettings = async (project: Project) => {
 // 保存项目设置
 const saveProjectSettings = async () => {
   console.log('保存项目设置:', projectSettings.value);
-  // 保存比对版本设置到内存缓存
+  // 保存比对版本设置到内存 Map（不持久化，重启后恢复默认）
   if (projectSettings.value.path) {
     projectVersionSettings.set(projectSettings.value.path, {
       leftVersion: projectSettings.value.leftVersion,
@@ -613,13 +613,17 @@ const saveProjectSettings = async () => {
   await loadStagedFiles();
 };
 
-// 加载比对版本设置
+// 加载比对版本设置（从内存 Map 加载，不持久化）
 const loadCompareVersions = (projectPath: string) => {
   try {
     const saved = projectVersionSettings.get(projectPath);
     if (saved) {
       projectSettings.value.leftVersion = saved.leftVersion || '';
       projectSettings.value.rightVersion = saved.rightVersion || 'WORKING';
+    } else {
+      // 没有保存的设置，恢复默认值
+      projectSettings.value.leftVersion = 'HEAD';
+      projectSettings.value.rightVersion = 'WORKING';
     }
   } catch (e) {
     console.error('加载比对版本设置失败:', e);
