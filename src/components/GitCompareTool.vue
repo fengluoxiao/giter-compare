@@ -2013,15 +2013,21 @@ const loadStagedFiles = async () => {
     const oldVersion = projectSettings.value.leftVersion;
     const newVersion = projectSettings.value.rightVersion;
     
-    if (oldVersion && newVersion && (oldVersion !== 'WORKING' || newVersion !== 'WORKING')) {
+    // 只有当两个版本都是 commit hash（不是 WORKING）时，才使用版本对比
+    const isOldVersionCommit = oldVersion && oldVersion !== 'WORKING';
+    const isNewVersionCommit = newVersion && newVersion !== 'WORKING';
+    
+    if (isOldVersionCommit || isNewVersionCommit) {
       // 使用版本对比获取差异文件
+      console.log('Using version diff:', oldVersion, '->', newVersion);
       changedFiles = await invoke<GitStatus[]>('get_diff_between_versions', {
         repoPath: currentPath.value,
-        oldVersion: oldVersion,
-        newVersion: newVersion
+        oldVersion: oldVersion || 'HEAD',
+        newVersion: newVersion || 'WORKING'
       });
     } else {
       // 获取工作区的变更（未暂存的文件）
+      console.log('Using working tree changes');
       changedFiles = await invoke<GitStatus[]>('get_working_tree_changes', {
         repoPath: currentPath.value
       });
