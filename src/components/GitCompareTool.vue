@@ -1439,20 +1439,20 @@ const loadStagedFileDiff = async (file: FileNode) => {
     if (fileStatus === 'deleted') {
       const alignedLeftLines: DiffLine[] = [];
       const alignedRightLines: DiffLine[] = [];
-      const oldLines = rightContent.split('\n');
+      const oldLines = leftContent.split('\n');
 
       for (let i = 0; i < oldLines.length; i++) {
         alignedLeftLines.push({
-          lineNum: 0,
-          content: '',
-          changeType: 'empty',
-          isDiff: false
-        });
-        alignedRightLines.push({
           lineNum: i + 1,
           content: oldLines[i],
           changeType: 'removed',
           isDiff: true
+        });
+        alignedRightLines.push({
+          lineNum: 0,
+          content: '',
+          changeType: 'empty',
+          isDiff: false
         });
       }
 
@@ -2714,20 +2714,20 @@ const loadFileDiff = async (file: FileNode, forceRefresh = false): Promise<{ lef
     if (fileStatus === 'deleted') {
       const alignedLeftLines: DiffLine[] = [];
       const alignedRightLines: DiffLine[] = [];
-      const oldLines = rightContent.split('\n');
+      const oldLines = leftContent.split('\n');
 
       for (let i = 0; i < oldLines.length; i++) {
         alignedLeftLines.push({
-          lineNum: 0,
-          content: '',
-          changeType: 'empty',
-          isDiff: false
-        });
-        alignedRightLines.push({
           lineNum: i + 1,
           content: oldLines[i],
           changeType: 'removed',
           isDiff: true
+        });
+        alignedRightLines.push({
+          lineNum: 0,
+          content: '',
+          changeType: 'empty',
+          isDiff: false
         });
       }
 
