@@ -275,6 +275,26 @@
               <label for="notifySync">同步完成时通知</label>
             </div>
           </div>
+
+          <!-- 界面设置 -->
+          <div class="settings-section">
+            <h4>界面设置</h4>
+            <div class="settings-row">
+              <button class="btn btn-secondary" @click="showWorkspaceManager = true; showProjectSettings = false">
+                💼 打开工作区管理
+              </button>
+            </div>
+            <div class="settings-row">
+              <button class="btn btn-secondary" @click="showPluginManager = true; showProjectSettings = false">
+                🔌 打开插件管理
+              </button>
+            </div>
+            <div class="settings-row">
+              <button class="btn btn-secondary" @click="toggleTheme(); showProjectSettings = false">
+                🌙 切换{{ theme === 'dark' ? '浅色' : '深色' }}模式
+              </button>
+            </div>
+          </div>
         </div>
         <div class="settings-actions">
           <button class="btn btn-secondary" @click="showProjectSettings = false">取消</button>
