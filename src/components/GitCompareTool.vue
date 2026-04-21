@@ -1995,24 +1995,39 @@ const addDeletedFileToTree = (filePath: string) => {
   }
 };
 
-// 加载更改的文件列表（工作区中已修改但未暂存的文件，类似 VSCode 的"更改"视图）
+// 加载更改的文件列表（工作区中已修改但未暂存的文件，或两个版本之间的差异文件）
 const loadStagedFiles = async () => {
   if (!currentPath.value) return;
 
   try {
-    // 获取工作区的变更（未暂存的文件）
-    const workingChanges = await invoke<GitStatus[]>('get_working_tree_changes', {
-      repoPath: currentPath.value
-    });
+    let changedFiles: GitStatus[] = [];
+    
+    // 检查是否设置了版本对比
+    const oldVersion = projectSettings.value.leftVersion;
+    const newVersion = projectSettings.value.rightVersion;
+    
+    if (oldVersion && newVersion && (oldVersion !== 'WORKING' || newVersion !== 'WORKING')) {
+      // 使用版本对比获取差异文件
+      changedFiles = await invoke<GitStatus[]>('get_diff_between_versions', {
+        repoPath: currentPath.value,
+        oldVersion: oldVersion,
+        newVersion: newVersion
+      });
+    } else {
+      // 获取工作区的变更（未暂存的文件）
+      changedFiles = await invoke<GitStatus[]>('get_working_tree_changes', {
+        repoPath: currentPath.value
+      });
+    }
 
     // 过滤掉未跟踪的文件，只显示已修改、已删除、已重命名的文件
-    const changedFiles = workingChanges.filter(change => {
+    const filteredFiles = changedFiles.filter(change => {
       const status = change.status.toLowerCase();
       return status === 'modified' || status === 'deleted' || status === 'renamed' || status === 'added';
     });
 
     // 进一步过滤掉文件夹路径（Git 有时会将文件夹报告为变更）
-    const fileOnlyChanges = await Promise.all(changedFiles.map(async change => {
+    const fileOnlyChanges = await Promise.all(filteredFiles.map(async change => {
       const fullPath = `${currentPath.value}/${change.path}`;
       try {
         // 尝试读取路径，如果是文件夹，会返回目录内容

@@ -350,6 +350,91 @@ async fn get_staged_changes(repo_path: String) -> Result<Vec<GitStatus>, String>
 }
 
 #[tauri::command]
+async fn get_diff_between_versions(repo_path: String, old_version: String, new_version: String) -> Result<Vec<GitStatus>, String> {
+    let repo = Repository::open(repo_path)
+        .map_err(|e| format!("Failed to open repository: {}", e))?;
+
+    // 解析旧版本
+    let old_obj = repo
+        .revparse_single(&old_version)
+        .map_err(|e| format!("Failed to resolve old version '{}': {}", old_version, e))?;
+    let old_commit = old_obj
+        .peel_to_commit()
+        .map_err(|e| format!("Failed to peel to commit: {}", e))?;
+    let old_tree = old_commit
+        .tree()
+        .map_err(|e| format!("Failed to get commit tree: {}", e))?;
+
+    // 解析新版本
+    let new_tree_oid = if new_version == "WORKING" {
+        // 工作区版本，使用 index 树
+        let mut index = repo.index().map_err(|e| format!("Failed to get index: {}", e))?;
+        index
+            .write_tree_to(&repo)
+            .map_err(|e| format!("Failed to write tree: {}", e))?
+    } else {
+        let new_obj = repo
+            .revparse_single(&new_version)
+            .map_err(|e| format!("Failed to resolve new version '{}': {}", new_version, e))?;
+        let new_commit = new_obj
+            .peel_to_commit()
+            .map_err(|e| format!("Failed to peel to commit: {}", e))?;
+        new_commit.tree_id()
+    };
+    
+    let new_tree = repo
+        .find_tree(new_tree_oid)
+        .map_err(|e| format!("Failed to find new tree: {}", e))?;
+
+    // 获取差异
+    let diff = repo
+        .diff_tree_to_tree(Some(&old_tree), Some(&new_tree), None)
+        .map_err(|e| format!("Failed to get diff: {}", e))?;
+
+    let mut result = Vec::new();
+
+    diff.foreach(
+        &mut |delta, _| {
+            let status = delta.status();
+            let path = delta.new_file().path().unwrap_or(Path::new("")).to_string_lossy().to_string();
+            if path.is_empty() {
+                let old_path = delta.old_file().path().unwrap_or(Path::new("")).to_string_lossy().to_string();
+                if !old_path.is_empty() {
+                    let status_str = match status {
+                        git2::Delta::Deleted => "Deleted",
+                        _ => return true,
+                    };
+                    result.push(GitStatus {
+                        path: old_path,
+                        status: status_str.to_string(),
+                    });
+                }
+                return true;
+            }
+
+            let status_str = match status {
+                git2::Delta::Added => "Added",
+                git2::Delta::Modified => "Modified",
+                git2::Delta::Deleted => "Deleted",
+                git2::Delta::Renamed => "Renamed",
+                _ => return true,
+            };
+
+            result.push(GitStatus {
+                path,
+                status: status_str.to_string(),
+            });
+            true
+        },
+        None,
+        None,
+        None,
+    ).map_err(|e| format!("Failed to iterate diff: {}", e))?;
+
+    Ok(result)
+}
+
+#[tauri::command]
 async fn get_file_content_at_revision(repo_path: String, file_path: String, revision: String) -> Result<String, String> {
     let repo = Repository::open(repo_path)
         .map_err(|e| format!("Failed to open repository: {}", e))?;
@@ -1556,6 +1641,7 @@ pub fn run() {
             get_file_diff,
             get_working_tree_changes,
             get_staged_changes,
+            get_diff_between_versions,
             get_file_content_at_revision,
             read_file_content,
             get_staged_file_content,
