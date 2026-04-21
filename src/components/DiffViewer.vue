@@ -1,35 +1,69 @@
 <template>
   <div class="diff-viewer">
     <div v-if="currentFile" class="file-info-bar">
-      <div class="file-info">
-        <span class="file-label">旧版本</span>
-        <select
-          v-if="commitList && commitList.length > 0"
-          :value="oldVersion"
-          class="version-select"
-          @change="$emit('change-old-version', ($event.target as HTMLSelectElement).value)"
-        >
-          <option v-for="commit in commitList" :key="commit.hash" :value="commit.hash">
-            {{ commit.short_hash }} - {{ commit.message }}
-          </option>
-        </select>
-        <span v-else class="version-text">{{ oldVersion || 'HEAD' }}</span>
-      </div>
-      <div class="file-info">
-        <span class="file-label">新版本</span>
-        <select
-          v-if="commitList && commitList.length > 0"
-          :value="newVersion"
-          class="version-select"
-          @change="$emit('change-new-version', ($event.target as HTMLSelectElement).value)"
-        >
-          <option value="WORKING">工作区</option>
-          <option v-for="commit in availableNewVersions" :key="commit.hash" :value="commit.hash">
-            {{ commit.short_hash }} - {{ commit.message }}
-          </option>
-        </select>
-        <span v-else class="version-text">{{ newVersion === 'WORKING' ? '工作区' : (newVersion || '工作区') }}</span>
-      </div>
+      <!-- 分支比对模式 -->
+      <template v-if="compareBranches">
+        <div class="file-info">
+          <span class="file-label">旧分支</span>
+          <select
+            v-if="branchList && branchList.length > 0"
+            :value="oldBranch"
+            class="version-select"
+            @change="$emit('change-old-branch', ($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="branch in branchList" :key="branch" :value="branch">
+              {{ branch }}
+            </option>
+          </select>
+          <span v-else class="version-text">{{ oldBranch || 'main' }}</span>
+        </div>
+        <div class="file-info">
+          <span class="file-label">新分支</span>
+          <select
+            v-if="branchList && branchList.length > 0"
+            :value="newBranch"
+            class="version-select"
+            @change="$emit('change-new-branch', ($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="branch in branchList" :key="branch" :value="branch">
+              {{ branch }}
+            </option>
+          </select>
+          <span v-else class="version-text">{{ newBranch || 'main' }}</span>
+        </div>
+      </template>
+      <!-- Commit 比对模式 -->
+      <template v-else>
+        <div class="file-info">
+          <span class="file-label">旧版本</span>
+          <select
+            v-if="commitList && commitList.length > 0"
+            :value="oldVersion"
+            class="version-select"
+            @change="$emit('change-old-version', ($event.target as HTMLSelectElement).value)"
+          >
+            <option v-for="commit in commitList" :key="commit.hash" :value="commit.hash">
+              {{ commit.short_hash }} - {{ commit.message }}
+            </option>
+          </select>
+          <span v-else class="version-text">{{ oldVersion || 'HEAD' }}</span>
+        </div>
+        <div class="file-info">
+          <span class="file-label">新版本</span>
+          <select
+            v-if="commitList && commitList.length > 0"
+            :value="newVersion"
+            class="version-select"
+            @change="$emit('change-new-version', ($event.target as HTMLSelectElement).value)"
+          >
+            <option value="WORKING">工作区</option>
+            <option v-for="commit in availableNewVersions" :key="commit.hash" :value="commit.hash">
+              {{ commit.short_hash }} - {{ commit.message }}
+            </option>
+          </select>
+          <span v-else class="version-text">{{ newVersion === 'WORKING' ? '工作区' : (newVersion || '工作区') }}</span>
+        </div>
+      </template>
     </div>
 
     <div v-if="currentFile" class="diff-content">
@@ -152,6 +186,10 @@ const props = defineProps<{
   oldVersion?: string;
   newVersion?: string;
   commitList?: CommitInfo[];
+  compareBranches?: boolean;
+  oldBranch?: string;
+  newBranch?: string;
+  branchList?: string[];
 }>();
 
 // 判断是否是文件查看模式（通过检查文件状态是否为空）
@@ -163,6 +201,8 @@ const emit = defineEmits<{
   'scroll': [scrollTop: number];
   'change-old-version': [version: string];
   'change-new-version': [version: string];
+  'change-old-branch': [branch: string];
+  'change-new-branch': [branch: string];
 }>();
 
 // 根据旧版本选择，计算可用的新版本列表

@@ -88,9 +88,15 @@
         :old-version="projectSettings.leftVersion"
         :new-version="projectSettings.rightVersion"
         :commit-list="commitList"
+        :compare-branches="projectSettings.compareBranches"
+        :old-branch="projectSettings.leftBranch"
+        :new-branch="projectSettings.rightBranch"
+        :branch-list="branchList"
         @scroll="handleScroll"
         @change-old-version="onDiffOldVersionChange"
         @change-new-version="onDiffNewVersionChange"
+        @change-old-branch="onDiffOldBranchChange"
+        @change-new-branch="onDiffNewBranchChange"
       />
     </div>
 
@@ -198,23 +204,45 @@
           <!-- 比对版本 -->
           <div class="settings-section">
             <h4>比对版本</h4>
-            <div class="settings-row">
-              <label class="settings-label">旧版本</label>
-              <select v-model="projectSettings.leftVersion" class="settings-input settings-select" @change="onSettingsOldVersionChange">
-                <option v-for="commit in commitList" :key="commit.hash" :value="commit.hash">
-                  {{ commit.short_hash }} - {{ commit.message }}
-                </option>
-              </select>
+            <div class="settings-row checkbox">
+              <input type="checkbox" id="compareBranches" v-model="projectSettings.compareBranches" @change="onCompareBranchesChange" />
+              <label for="compareBranches">比对不同分支</label>
             </div>
-            <div class="settings-row">
-              <label class="settings-label">新版本</label>
-              <select v-model="projectSettings.rightVersion" class="settings-input settings-select" @change="onSettingsNewVersionChange">
-                <option value="WORKING">工作区 (最新未提交)</option>
-                <option v-for="commit in availableNewVersions" :key="commit.hash" :value="commit.hash">
-                  {{ commit.short_hash }} - {{ commit.message }}
-                </option>
-              </select>
-            </div>
+            <!-- 分支比对模式 -->
+            <template v-if="projectSettings.compareBranches">
+              <div class="settings-row">
+                <label class="settings-label">旧分支</label>
+                <select v-model="projectSettings.leftBranch" class="settings-input settings-select" @change="onBranchChange">
+                  <option v-for="branch in branchList" :key="branch" :value="branch">{{ branch }}</option>
+                </select>
+              </div>
+              <div class="settings-row">
+                <label class="settings-label">新分支</label>
+                <select v-model="projectSettings.rightBranch" class="settings-input settings-select" @change="onBranchChange">
+                  <option v-for="branch in branchList" :key="branch" :value="branch">{{ branch }}</option>
+                </select>
+              </div>
+            </template>
+            <!-- Commit 比对模式 -->
+            <template v-else>
+              <div class="settings-row">
+                <label class="settings-label">旧版本</label>
+                <select v-model="projectSettings.leftVersion" class="settings-input settings-select" @change="onSettingsOldVersionChange">
+                  <option v-for="commit in commitList" :key="commit.hash" :value="commit.hash">
+                    {{ commit.short_hash }} - {{ commit.message }}
+                  </option>
+                </select>
+              </div>
+              <div class="settings-row">
+                <label class="settings-label">新版本</label>
+                <select v-model="projectSettings.rightVersion" class="settings-input settings-select" @change="onSettingsNewVersionChange">
+                  <option value="WORKING">工作区 (最新未提交)</option>
+                  <option v-for="commit in availableNewVersions" :key="commit.hash" :value="commit.hash">
+                    {{ commit.short_hash }} - {{ commit.message }}
+                  </option>
+                </select>
+              </div>
+            </template>
           </div>
 
           <!-- 对比设置 -->
@@ -598,6 +626,9 @@ interface ProjectSettings {
   defaultBranch: string;
   leftVersion: string;
   rightVersion: string;
+  compareBranches: boolean;
+  leftBranch: string;
+  rightBranch: string;
   ignoreWhitespace: boolean;
   caseSensitive: boolean;
   ignoreLineEnding: boolean;
@@ -615,6 +646,9 @@ const projectSettings = ref<ProjectSettings>({
   defaultBranch: 'main',
   leftVersion: 'HEAD',
   rightVersion: 'WORKING',
+  compareBranches: false,
+  leftBranch: 'main',
+  rightBranch: 'main',
   ignoreWhitespace: false,
   caseSensitive: true,
   ignoreLineEnding: true,
@@ -638,7 +672,13 @@ interface CommitInfo {
 const commitList = ref<CommitInfo[]>([]);
 
 // 内存中存储每个项目的版本设置（不持久化，重启后恢复默认）
-const projectVersionSettings = new Map<string, { leftVersion: string; rightVersion: string }>();
+const projectVersionSettings = new Map<string, {
+  leftVersion: string;
+  rightVersion: string;
+  compareBranches: boolean;
+  leftBranch: string;
+  rightBranch: string;
+}>();
 
 // 根据旧版本选择，计算可用的新版本列表
 const availableNewVersions = computed(() => {
@@ -683,6 +723,30 @@ const onSettingsNewVersionChange = async () => {
   await saveAndRefreshVersions();
 };
 
+// 分支比对开关切换处理
+const onCompareBranchesChange = async () => {
+  if (projectSettings.value.compareBranches) {
+    // 切换到分支比对模式：使用分支最新 commit
+    projectSettings.value.leftVersion = projectSettings.value.leftBranch;
+    projectSettings.value.rightVersion = projectSettings.value.rightBranch;
+  } else {
+    // 切换回 commit 比对模式：恢复默认
+    projectSettings.value.leftVersion = 'HEAD';
+    projectSettings.value.rightVersion = 'WORKING';
+  }
+  await saveAndRefreshVersions();
+};
+
+// 分支选择变更处理
+const onBranchChange = async () => {
+  if (projectSettings.value.compareBranches) {
+    // 分支比对模式下，直接使用分支名作为版本
+    projectSettings.value.leftVersion = projectSettings.value.leftBranch;
+    projectSettings.value.rightVersion = projectSettings.value.rightBranch;
+    await saveAndRefreshVersions();
+  }
+};
+
 // DiffViewer 版本变更处理
 const onDiffOldVersionChange = async (version: string) => {
   projectSettings.value.leftVersion = version;
@@ -695,13 +759,29 @@ const onDiffNewVersionChange = async (version: string) => {
   await saveAndRefreshVersions();
 };
 
+// DiffViewer 分支变更处理
+const onDiffOldBranchChange = async (branch: string) => {
+  projectSettings.value.leftBranch = branch;
+  projectSettings.value.leftVersion = branch;
+  await saveAndRefreshVersions();
+};
+
+const onDiffNewBranchChange = async (branch: string) => {
+  projectSettings.value.rightBranch = branch;
+  projectSettings.value.rightVersion = branch;
+  await saveAndRefreshVersions();
+};
+
 // 保存版本设置并刷新
 const saveAndRefreshVersions = async () => {
   // 保存到内存 Map（不持久化，重启后恢复默认）
   if (projectSettings.value.path) {
     projectVersionSettings.set(projectSettings.value.path, {
       leftVersion: projectSettings.value.leftVersion,
-      rightVersion: projectSettings.value.rightVersion
+      rightVersion: projectSettings.value.rightVersion,
+      compareBranches: projectSettings.value.compareBranches,
+      leftBranch: projectSettings.value.leftBranch,
+      rightBranch: projectSettings.value.rightBranch
     });
   }
 
@@ -777,7 +857,10 @@ const saveProjectSettings = async () => {
   if (projectSettings.value.path) {
     projectVersionSettings.set(projectSettings.value.path, {
       leftVersion: projectSettings.value.leftVersion,
-      rightVersion: projectSettings.value.rightVersion
+      rightVersion: projectSettings.value.rightVersion,
+      compareBranches: projectSettings.value.compareBranches,
+      leftBranch: projectSettings.value.leftBranch,
+      rightBranch: projectSettings.value.rightBranch
     });
   }
   showProjectSettings.value = false;
@@ -806,10 +889,16 @@ const loadCompareVersions = (projectPath: string) => {
     if (saved) {
       projectSettings.value.leftVersion = saved.leftVersion || '';
       projectSettings.value.rightVersion = saved.rightVersion || 'WORKING';
+      projectSettings.value.compareBranches = saved.compareBranches || false;
+      projectSettings.value.leftBranch = saved.leftBranch || projectSettings.value.defaultBranch || 'main';
+      projectSettings.value.rightBranch = saved.rightBranch || projectSettings.value.defaultBranch || 'main';
     } else {
       // 没有保存的设置，恢复默认值
       projectSettings.value.leftVersion = 'HEAD';
       projectSettings.value.rightVersion = 'WORKING';
+      projectSettings.value.compareBranches = false;
+      projectSettings.value.leftBranch = projectSettings.value.defaultBranch || 'main';
+      projectSettings.value.rightBranch = projectSettings.value.defaultBranch || 'main';
     }
   } catch (e) {
     console.error('加载比对版本设置失败:', e);
