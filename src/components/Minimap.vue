@@ -67,13 +67,21 @@ const mergedLines = computed(() => {
   return result;
 });
 
-// 颜色定义
-const COLORS = {
-  background: { r: 240, g: 240, b: 240 },
-  unchanged: { r: 212, g: 212, b: 212 },
-  added: { r: 76, g: 175, b: 80 },
-  removed: { r: 244, g: 67, b: 54 },
-  changed: { r: 33, g: 150, b: 243 }
+// 检测深色模式
+const isDarkMode = () => {
+  return document.body.getAttribute('data-theme') === 'dark';
+};
+
+// 颜色定义（根据主题动态选择）
+const getColors = () => {
+  const dark = isDarkMode();
+  return {
+    background: dark ? { r: 30, g: 30, b: 30 } : { r: 240, g: 240, b: 240 },
+    unchanged: dark ? { r: 60, g: 60, b: 60 } : { r: 212, g: 212, b: 212 },
+    added: dark ? { r: 76, g: 175, b: 80 } : { r: 76, g: 175, b: 80 },
+    removed: dark ? { r: 244, g: 67, b: 54 } : { r: 244, g: 67, b: 54 },
+    changed: dark ? { r: 33, g: 150, b: 243 } : { r: 33, g: 150, b: 243 }
+  };
 };
 
 // 使用 ImageData 直接操作像素渲染
@@ -108,6 +116,7 @@ const render = () => {
     const line = lines[Math.min(lineIndex, totalLines - 1)];
 
     // 确定颜色 - 只要不是 unchanged 就是有变更
+    const COLORS = getColors();
     let color = COLORS.unchanged;
     if (line) {
       if (line.changeType === 'added' || line.changeType === 'empty') {
@@ -141,10 +150,28 @@ watch(() => props.rightLines, render, { deep: true });
 onMounted(() => {
   render();
   window.addEventListener('resize', render);
+
+  // 监听主题变化
+  const observer = new MutationObserver(() => {
+    render();
+  });
+  observer.observe(document.body, {
+    attributes: true,
+    attributeFilter: ['data-theme']
+  });
+
+  // 保存 observer 引用以便清理
+  (minimapRef.value as any)?._themeObserver = observer;
 });
 
 onUnmounted(() => {
   window.removeEventListener('resize', render);
+
+  // 清理 observer
+  const observer = (minimapRef.value as any)?._themeObserver;
+  if (observer) {
+    observer.disconnect();
+  }
 });
 
 const viewportStyle = computed(() => {
