@@ -92,7 +92,7 @@
               :search-matches="leftSearchMatches"
               :current-match-index="currentLeftMatchIndex"
               :highlighted-line="highlightedLine"
-              :blame-info="leftBlameInfo"
+              :blame-info="props.leftBlameInfo"
               @line-click="onLeftLineClick"
             />
           </div>
@@ -110,7 +110,7 @@
               :search-matches="rightSearchMatches"
               :current-match-index="currentRightMatchIndex"
               :highlighted-line="highlightedLine"
-              :blame-info="rightBlameInfo"
+              :blame-info="props.rightBlameInfo"
               @line-click="onRightLineClick"
             />
           </div>
@@ -257,19 +257,7 @@ const highlightedLine = ref<number | null>(null); // 当前高亮的行号
 const selectedLeftLineIndex = ref<number | null>(null);
 const selectedRightLineIndex = ref<number | null>(null);
 
-// blame 信息
-interface BlameInfo {
-  line_number: number;
-  commit_hash: string;
-  short_hash: string;
-  author: string;
-  email: string;
-  timestamp: number;
-  summary: string;
-}
 
-const leftBlameInfo = ref<BlameInfo[]>([]);
-const rightBlameInfo = ref<BlameInfo[]>([]);
 
 // 处理左侧行点击
 const onLeftLineClick = (lineIndex: number, lineNum: number) => {

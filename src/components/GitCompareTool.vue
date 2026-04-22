@@ -717,26 +717,32 @@ const loadBlameInfo = async (filePath: string) => {
   try {
     // 加载左侧 blame
     const oldVersion = projectSettings.value.leftVersion;
+    console.log('Loading blame for left version:', oldVersion, 'file:', filePath);
     if (oldVersion && oldVersion !== 'WORKING') {
       leftBlameInfo.value = await invoke<BlameInfo[]>('get_file_blame', {
         repoPath: currentPath.value,
         filePath,
         revision: oldVersion
       });
+      console.log('Left blame loaded:', leftBlameInfo.value.length, 'lines');
     } else {
       leftBlameInfo.value = [];
+      console.log('Left version is WORKING, skipping blame');
     }
 
     // 加载右侧 blame
     const newVersion = projectSettings.value.rightVersion;
+    console.log('Loading blame for right version:', newVersion, 'file:', filePath);
     if (newVersion && newVersion !== 'WORKING') {
       rightBlameInfo.value = await invoke<BlameInfo[]>('get_file_blame', {
         repoPath: currentPath.value,
         filePath,
         revision: newVersion
       });
+      console.log('Right blame loaded:', rightBlameInfo.value.length, 'lines');
     } else {
       rightBlameInfo.value = [];
+      console.log('Right version is WORKING, skipping blame');
     }
   } catch (e) {
     console.error('Failed to load blame info:', e);
