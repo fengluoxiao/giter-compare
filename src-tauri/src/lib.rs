@@ -1111,10 +1111,29 @@ async fn start_file_watcher(
                     });
 
                     if has_changes {
-                        println!("Emitting file-changed event");
+                        // 收集所有变化的路径
+                        let paths: Vec<String> = events.iter()
+                            .map(|e| e.path.to_string_lossy().to_string())
+                            .collect();
+                        
+                        // 检查是否是结构变化（新增/删除文件）
+                        // 通过检查路径是否存在于文件系统中来判断
+                        let is_structural = events.iter().any(|e| {
+                            let path = &e.path;
+                            // 如果路径不存在，可能是删除操作
+                            // 如果路径存在且是文件，可能是新增或修改
+                            let exists = path.exists();
+                            let is_file = path.is_file();
+                            println!("Checking path: {:?}, exists: {}, is_file: {}", path, exists, is_file);
+                            !exists || is_file
+                        });
+
+                        println!("Emitting file-changed event, paths: {:?}, structural: {}", paths, is_structural);
                         // 发送文件变更事件到前端
                         let emit_result = window_clone.emit("file-changed", serde_json::json!({
-                            "repo_path": &repo_path_clone
+                            "repo_path": &repo_path_clone,
+                            "paths": paths,
+                            "is_structural_change": is_structural
                         }));
                         if let Err(e) = emit_result {
                             eprintln!("Failed to emit event: {:?}", e);

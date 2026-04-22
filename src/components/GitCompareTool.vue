@@ -231,6 +231,7 @@
               <div class="settings-row">
                 <label class="settings-label">旧版本</label>
                 <select v-model="projectSettings.leftVersion" class="settings-input settings-select" @change="onSettingsOldVersionChange">
+                  <option value="HEAD">HEAD (最新提交)</option>
                   <option v-for="commit in commitList" :key="commit.hash" :value="commit.hash">
                     {{ commit.short_hash }} - {{ commit.message }}
                   </option>
@@ -464,7 +465,7 @@
                   >
                     <div class="workspace-info">
                       <span class="workspace-name">{{ workspace.name }}</span>
-                      <span class="workspace-meta">{{ workspace.projects.length }} 个项目 · {{ formatDate(workspace.createdAt) }}</span>
+                      <span class="workspace-meta">{{ workspace.projects.length }} 个项目 · {{ workspace.createdAt ? formatDate(workspace.createdAt) : '未知时间' }}</span>
                     </div>
                     <div class="workspace-actions">
                       <button class="btn btn-icon" @click="loadWorkspaceFromSettings(workspace)" title="加载">
@@ -598,7 +599,7 @@ interface FileNode {
 interface GitStatus {
   path: string;
   status: string;
-  name?: string;
+  name: string;
 }
 
 interface DiffLine {
@@ -641,7 +642,7 @@ interface Workspace {
 }
 
 // 主题和视图状态
-const theme = ref('light');
+const theme = ref<'light' | 'dark'>('light');
 const viewMode = ref<'working' | 'staged'>('working');
 const showAllFiles = ref(true);
 const showDeletedFiles = ref(false);
@@ -1104,14 +1105,14 @@ const loadCompareVersions = (projectPath: string) => {
   try {
     const saved = projectVersionSettings.get(projectPath);
     if (saved) {
-      projectSettings.value.leftVersion = saved.leftVersion || '';
+      projectSettings.value.leftVersion = saved.leftVersion || 'HEAD';
       projectSettings.value.rightVersion = saved.rightVersion || 'WORKING';
       projectSettings.value.compareBranches = saved.compareBranches || false;
       projectSettings.value.leftBranch = saved.leftBranch || projectSettings.value.defaultBranch || 'main';
       projectSettings.value.rightBranch = saved.rightBranch || projectSettings.value.defaultBranch || 'main';
     } else {
-      // 没有保存的设置，恢复默认值（空字符串表示使用工作区模式）
-      projectSettings.value.leftVersion = '';
+      // 没有保存的设置，恢复默认值
+      projectSettings.value.leftVersion = 'HEAD';
       projectSettings.value.rightVersion = 'WORKING';
       projectSettings.value.compareBranches = false;
       projectSettings.value.leftBranch = projectSettings.value.defaultBranch || 'main';
@@ -1252,7 +1253,7 @@ const hasNext = computed(() => currentFileIndex.value < allFiles.value.length - 
 
 onMounted(async () => {
   const savedTheme = localStorage.getItem('theme');
-  theme.value = savedTheme || 'light';
+  theme.value = (savedTheme as 'light' | 'dark') || 'light';
   // 初始化时设置 body 的 data-theme 属性
   document.body.setAttribute('data-theme', theme.value);
 
@@ -1286,22 +1287,34 @@ onMounted(async () => {
   console.log('原生工具栏已禁用（refactor/components 分支）');
 
   unlistenFileChange = await listen('file-changed', (event: any) => {
-    console.log('File changed event received:', event.payload);
-    // 检查是否是结构变化（新增/删除文件或文件夹）
-    const payload = event.payload;
-    const isStructuralChange = payload?.is_structural_change === true;
-    const changedFilePath = payload?.path;
-    const eventRepoPath = payload?.repo_path;
+    console.log('[FileWatcher] Event received:', event.payload);
 
-    // 只有当事件来自当前项目时才处理
-    if (eventRepoPath && eventRepoPath !== currentPath.value) {
-      console.log('Event from different project, ignoring');
+    // 只有当新版本是 WORKING（工作区）时才处理文件变化
+    // 如果比对的是历史版本，不需要监听文件变化
+    if (projectSettings.value.rightVersion !== 'WORKING') {
+      console.log('[FileWatcher] Not in working tree mode, ignoring file change');
       return;
     }
 
-    if (isStructuralChange && currentPath.value) {
-      // 文件结构变化，清除当前项目的文件树缓存
-      clearFileTreeCache(currentPath.value);
+    // 检查是否是结构变化（新增/删除文件或文件夹）
+    const payload = event.payload;
+    const isStructuralChange = payload?.is_structural_change === true;
+    const changedFilePaths = payload?.paths || [];
+    const changedFilePath = changedFilePaths.length > 0 ? changedFilePaths[0] : null;
+    const eventRepoPath = payload?.repo_path;
+
+    console.log('[FileWatcher] Processing event:', {
+      isStructuralChange,
+      changedFilePaths,
+      changedFilePath,
+      eventRepoPath,
+      currentPath: currentPath.value
+    });
+
+    // 只有当事件来自当前项目时才处理
+    if (eventRepoPath && eventRepoPath !== currentPath.value) {
+      console.log('[FileWatcher] Event from different project, ignoring');
+      return;
     }
 
     // 清除变更文件的 diff 缓存
@@ -1309,12 +1322,28 @@ onMounted(async () => {
       const diffCacheKey = getDiffCacheKey(currentPath.value, changedFilePath);
       if (diffCache.value.has(diffCacheKey)) {
         diffCache.value.delete(diffCacheKey);
-        console.log('Cleared diff cache for changed file:', changedFilePath);
+        console.log('[FileWatcher] Cleared diff cache for changed file:', changedFilePath);
       }
     }
 
-    // 无论是否有 currentPath，都尝试刷新
-    refresh();
+    // 刷新 git 状态，refresh() 会按需添加新文件到文件树
+    // 而不是重新加载整个文件树，避免大型项目卡顿
+    if (currentPath.value) {
+      console.log('[FileWatcher] Refreshing git status...');
+      // 延迟 500ms，确保 git 有足够的时间检测新文件
+      setTimeout(() => {
+        console.log('[FileWatcher] Executing refresh...');
+        refresh().then(() => {
+          console.log('[FileWatcher] Git status refreshed successfully');
+        }).catch(e => {
+          console.error('[FileWatcher] Failed to refresh git status:', e);
+        });
+      }, 500);
+    } else {
+      // 如果没有当前路径，直接刷新状态
+      console.log('[FileWatcher] No current path, refreshing directly...');
+      refresh();
+    }
   });
 
   // 启动轮询检查原生工具栏按钮点击
@@ -1345,12 +1374,22 @@ onMounted(async () => {
     }
   };
 
-  // 每 100ms 轮询一次
+  // 每 100ms 轮询一次工具栏按钮
   const pollInterval = setInterval(pollToolbarButtons, 100);
+
+  // 每 3 秒轮询一次 git 状态（作为文件监听器的备用）
+  // refresh() 会按需添加新文件，而不是重新加载整个文件树
+  const gitStatusPollInterval = setInterval(async () => {
+    if (currentPath.value && projectSettings.value.rightVersion === 'WORKING') {
+      console.log('[GitPoll] Refreshing git status...');
+      await refresh();
+    }
+  }, 3000);
 
   // 保存清理函数
   unlistenToolbarClick = () => {
     clearInterval(pollInterval);
+    clearInterval(gitStatusPollInterval);
   };
 });
 
@@ -1373,7 +1412,7 @@ const toggleTheme = () => {
   document.body.setAttribute('data-theme', theme.value);
 };
 
-const setTheme = (newTheme: string) => {
+const setTheme = (newTheme: 'light' | 'dark') => {
   theme.value = newTheme;
   localStorage.setItem('theme', theme.value);
   document.body.setAttribute('data-theme', theme.value);
@@ -1775,7 +1814,7 @@ const buildDiffLines = (diffResult: FileDiff) => {
 
     let pendingRemoved: { content: string; lineNum: number } | null = null;
 
-    hunk.lines.forEach(line => {
+    hunk.lines.forEach((line: { change_type: string; content: string }) => {
       if (line.change_type === 'removed') {
         pendingRemoved = { content: line.content, lineNum: rightLineNum++ };
         removed++;
@@ -1842,7 +1881,7 @@ const buildDiffLines = (diffResult: FileDiff) => {
       }
     });
 
-    const finalPending = pendingRemoved;
+    const finalPending = pendingRemoved as { content: string; lineNum: number } | null;
     if (finalPending) {
       alignedLeftLines.push({
         lineNum: 0,
@@ -2481,6 +2520,11 @@ const buildFileTreeRecursive = async (
   const changeMap = new Map<string, string>();
   changes.forEach(c => changeMap.set(c.path, c.status));
 
+  // 调试：记录变更映射
+  if (parentPath === '') {
+    console.log('[FileWatcher] buildFileTreeRecursive: changeMap entries:', Array.from(changeMap.entries()));
+  }
+
   const filteredEntries = entries.filter(entry => {
     const name = entry.name;
     if (name.startsWith('.')) return false;
@@ -2523,6 +2567,11 @@ const buildFileTreeRecursive = async (
       });
     } else {
       const status = changeMap.get(relativePath);
+
+      // 调试：记录文件和状态
+      if (status) {
+        console.log(`[FileWatcher] File with status: ${relativePath} -> ${status}`);
+      }
 
       if (!showAllFiles.value && !status) {
         continue;
@@ -2599,13 +2648,53 @@ const clearFileTreeCache = (path?: string) => {
   }
 };
 
+// 保存文件树的展开状态
+const saveExpandedState = (nodes: FileNode[]): Map<string, boolean> => {
+  const state = new Map<string, boolean>();
+  const traverse = (nodeList: FileNode[]) => {
+    for (const node of nodeList) {
+      if (node.type === 'directory') {
+        state.set(node.path, node.expanded || false);
+        if (node.children) {
+          traverse(node.children);
+        }
+      }
+    }
+  };
+  traverse(nodes);
+  return state;
+};
+
+// 恢复文件树的展开状态
+const restoreExpandedState = (nodes: FileNode[], state: Map<string, boolean>) => {
+  const traverse = (nodeList: FileNode[]) => {
+    for (const node of nodeList) {
+      if (node.type === 'directory') {
+        if (state.has(node.path)) {
+          node.expanded = state.get(node.path)!;
+        }
+        if (node.children) {
+          traverse(node.children);
+        }
+      }
+    }
+  };
+  traverse(nodes);
+};
+
 const loadFileTree = async (path: string, forceRefresh = false) => {
   try {
+    // 保存当前的展开状态
+    const expandedState = saveExpandedState(fileTree.value);
+
     // 先尝试使用缓存（如果不是强制刷新）
     if (!forceRefresh) {
       const cached = getCachedFileTree(path);
       if (cached) {
         fileTree.value = JSON.parse(JSON.stringify(cached.tree)); // 深拷贝避免引用问题
+
+        // 恢复展开状态
+        restoreExpandedState(fileTree.value, expandedState);
 
         // 即使有缓存，也要重新获取最新的 Git 状态
         let latestChanges: GitStatus[] = [];
@@ -2634,14 +2723,17 @@ const loadFileTree = async (path: string, forceRefresh = false) => {
     }
 
     // 缓存未命中或强制刷新，重新加载
-    console.log(`Loading file tree from disk: ${path}`);
+    console.log(`[FileWatcher] Loading file tree from disk: ${path}`);
     const entries = await invoke<any[]>('read_directory', { path });
+    console.log(`[FileWatcher] Read ${entries.length} entries from disk`);
 
     let changes: GitStatus[] = [];
     try {
+      console.log('[FileWatcher] Fetching git working tree changes...');
       changes = await invoke<GitStatus[]>('get_working_tree_changes', { repoPath: path });
+      console.log(`[FileWatcher] Got ${changes.length} git changes:`, changes);
     } catch (e) {
-      console.log('Not a git repository or error getting changes');
+      console.log('[FileWatcher] Not a git repository or error getting changes:', e);
     }
 
     // 保存变更数据用于检测是否有已删除的文件
@@ -2649,6 +2741,9 @@ const loadFileTree = async (path: string, forceRefresh = false) => {
 
     // 构建文件树（不包含已删除的文件）
     fileTree.value = await buildFileTreeRecursive(entries, path, changes);
+
+    // 恢复展开状态
+    restoreExpandedState(fileTree.value, expandedState);
 
     // 保存到缓存（缓存不包含已删除的文件）
     setCachedFileTree(path, fileTree.value, changes);
@@ -2707,6 +2802,57 @@ const addDeletedFileToTree = (filePath: string) => {
         };
         currentLevel.push(newDir);
         currentLevel = newDir.children;
+      }
+    }
+  }
+};
+
+// 按需添加新文件到文件树（不重新加载整个文件树）
+const addNewFileToTree = async (filePath: string, status: string) => {
+  const parts = filePath.split('/');
+  let currentLevel = fileTree.value;
+
+  for (let i = 0; i < parts.length; i++) {
+    const part = parts[i];
+    const isFile = i === parts.length - 1;
+    const currentPath = parts.slice(0, i + 1).join('/');
+
+    const existingNode = currentLevel.find(node => node.name === part);
+
+    if (existingNode) {
+      if (isFile) {
+        // 更新已存在节点的状态
+        existingNode.status = status;
+        console.log(`[addNewFileToTree] Updated existing file: ${currentPath} -> ${status}`);
+      } else {
+        // 展开父目录
+        existingNode.expanded = true;
+        currentLevel = existingNode.children;
+      }
+    } else {
+      // 创建新节点
+      if (isFile) {
+        currentLevel.push({
+          name: part,
+          path: currentPath,
+          type: 'file',
+          status: status,
+          children: []
+        });
+        console.log(`[addNewFileToTree] Added new file: ${currentPath} -> ${status}`);
+      } else {
+        // 注意：这里不检查目录是否存在，直接创建目录节点
+        // 因为新文件的父目录可能也不存在于当前文件树中
+        const newDir: FileNode = {
+          name: part,
+          path: currentPath,
+          type: 'directory',
+          children: [],
+          expanded: true
+        };
+        currentLevel.push(newDir);
+        currentLevel = newDir.children;
+        console.log(`[addNewFileToTree] Added new directory: ${currentPath}`);
       }
     }
   }
@@ -2895,7 +3041,7 @@ const streamLoadRemainingFiles = (
 const onPluginsChanged = () => {
   // 重新加载当前文件以应用新的语法高亮
   if (currentFile.value) {
-    loadFileContent(currentFile.value);
+    selectFile(currentFile.value.path);
   }
 };
 
@@ -2931,6 +3077,30 @@ const refresh = async (forceReload = false) => {
 
     // 更新 gitChanges 用于检测是否有已删除的文件
     gitChanges.value = changes;
+
+    // 检查是否有新文件（不在当前文件树中的文件）
+    const currentFilePaths = new Set<string>();
+    const collectFilePaths = (nodes: FileNode[]) => {
+      for (const node of nodes) {
+        if (node.type === 'file') {
+          currentFilePaths.add(node.path);
+        }
+        if (node.children) {
+          collectFilePaths(node.children);
+        }
+      }
+    };
+    collectFilePaths(fileTree.value);
+
+    // 检查是否有新文件
+    const newFileChanges = changes.filter(change => !currentFilePaths.has(change.path));
+    if (newFileChanges.length > 0) {
+      console.log(`[Refresh] ${newFileChanges.length} new files detected, adding to file tree...`);
+      // 按需添加新文件，而不是重新加载整个文件树
+      for (const change of newFileChanges) {
+        await addNewFileToTree(change.path, change.status);
+      }
+    }
 
     // 更新文件树中的状态（保持展开状态）
     updateFileTreeStatus(fileTree.value, changes);
@@ -3247,21 +3417,23 @@ const loadFileDiff = async (file: FileNode, forceRefresh = false): Promise<{ lef
     let rightLineNum = 1;
 
     diffResult.hunks.forEach(hunk => {
-        // 添加上下文行 - hunk.old_start 和 hunk.new_start 是 1-based 行号
-        const contextStart = Math.min(hunk.old_start, hunk.new_start) - 1;
-        for (let i = alignedLeftLines.length; i < contextStart; i++) {
+      // 添加上下文行 - hunk.old_start 和 hunk.new_start 是 1-based 行号
+      const contextStart = Math.min(hunk.old_start, hunk.new_start) - 1;
+      for (let i = alignedLeftLines.length; i < contextStart; i++) {
         const oldContent = diffResult.old_content[i] || '';
         const newContent = diffResult.new_content[i] || '';
 
+        // 左侧显示旧版本内容
         alignedLeftLines.push({
           lineNum: leftLineNum++,
-          content: newContent,
+          content: oldContent,
           changeType: 'unchanged',
           isDiff: false
         });
+        // 右侧显示新版本内容
         alignedRightLines.push({
           lineNum: rightLineNum++,
-          content: oldContent,
+          content: newContent,
           changeType: 'unchanged',
           isDiff: false
         });
@@ -3271,62 +3443,68 @@ const loadFileDiff = async (file: FileNode, forceRefresh = false): Promise<{ lef
 
       hunk.lines.forEach(line => {
         if (line.change_type === 'removed') {
-          pendingRemoved = { content: line.content, lineNum: rightLineNum++ };
+          // 删除的行：左侧显示旧内容（removed），右侧留空
+          pendingRemoved = { content: line.content, lineNum: leftLineNum++ };
           removed++;
         } else if (line.change_type === 'added') {
           if (pendingRemoved) {
+            // 修改的行：左侧显示旧内容（modified），右侧显示新内容（modified）
             alignedLeftLines.push({
-              lineNum: leftLineNum++,
-              content: line.content,
-              changeType: 'changed',
+              lineNum: pendingRemoved.lineNum,
+              content: pendingRemoved.content,
+              changeType: 'modified',
               isDiff: true
             });
             alignedRightLines.push({
-              lineNum: pendingRemoved.lineNum,
-              content: pendingRemoved.content,
-              changeType: 'changed',
+              lineNum: rightLineNum++,
+              content: line.content,
+              changeType: 'modified',
               isDiff: true
             });
             pendingRemoved = null;
             changed++;
           } else {
+            // 新增的行：左侧留空，右侧显示新内容（added）
             alignedLeftLines.push({
-              lineNum: leftLineNum++,
+              lineNum: 0,
+              content: '',
+              changeType: 'empty',
+              isDiff: false
+            });
+            alignedRightLines.push({
+              lineNum: rightLineNum++,
               content: line.content,
               changeType: 'added',
               isDiff: true
             });
-            alignedRightLines.push({
-              lineNum: 0,
-              content: '',
-              changeType: 'empty',
-              isDiff: false
-            });
             added++;
           }
         } else {
+          // 上下文行
           if (pendingRemoved) {
             alignedLeftLines.push({
-              lineNum: 0,
-              content: '',
-              changeType: 'empty',
-              isDiff: false
-            });
-            alignedRightLines.push({
               lineNum: pendingRemoved.lineNum,
               content: pendingRemoved.content,
               changeType: 'removed',
               isDiff: true
             });
+            alignedRightLines.push({
+              lineNum: 0,
+              content: '',
+              changeType: 'empty',
+              isDiff: false
+            });
             pendingRemoved = null;
           }
 
+          // 左侧显示旧版本内容
           alignedLeftLines.push({
             lineNum: leftLineNum++,
             content: line.content,
             changeType: 'unchanged',
             isDiff: false
           });
+          // 右侧显示新版本内容
           alignedRightLines.push({
             lineNum: rightLineNum++,
             content: line.content,
@@ -3336,20 +3514,22 @@ const loadFileDiff = async (file: FileNode, forceRefresh = false): Promise<{ lef
         }
       });
 
-      const finalPending = pendingRemoved;
-      if (finalPending) {
+      // 处理 hunk 结束后剩余的 pendingRemoved
+      if (pendingRemoved) {
+        const removedLine = pendingRemoved as { content: string; lineNum: number };
         alignedLeftLines.push({
+          lineNum: removedLine.lineNum,
+          content: removedLine.content,
+          changeType: 'removed',
+          isDiff: true
+        });
+        alignedRightLines.push({
           lineNum: 0,
           content: '',
           changeType: 'empty',
           isDiff: false
         });
-        alignedRightLines.push({
-          lineNum: finalPending.lineNum,
-          content: finalPending.content,
-          changeType: 'removed',
-          isDiff: true
-        });
+        pendingRemoved = null;
       }
     });
 
@@ -3359,6 +3539,22 @@ const loadFileDiff = async (file: FileNode, forceRefresh = false): Promise<{ lef
       const newContent = diffResult.new_content[i] || '';
 
       if (oldContent && !newContent) {
+        // 旧版本有，新版本没有：左侧显示旧内容（removed），右侧留空
+        alignedLeftLines.push({
+          lineNum: leftLineNum++,
+          content: oldContent,
+          changeType: 'removed',
+          isDiff: true
+        });
+        alignedRightLines.push({
+          lineNum: 0,
+          content: '',
+          changeType: 'empty',
+          isDiff: false
+        });
+        removed++;
+      } else if (!oldContent && newContent) {
+        // 旧版本没有，新版本有：左侧留空，右侧显示新内容（added）
         alignedLeftLines.push({
           lineNum: 0,
           content: '',
@@ -3367,35 +3563,22 @@ const loadFileDiff = async (file: FileNode, forceRefresh = false): Promise<{ lef
         });
         alignedRightLines.push({
           lineNum: rightLineNum++,
-          content: oldContent,
-          changeType: 'removed',
-          isDiff: true
-        });
-        removed++;
-      } else if (!oldContent && newContent) {
-        alignedLeftLines.push({
-          lineNum: leftLineNum++,
           content: newContent,
           changeType: 'added',
           isDiff: true
         });
-        alignedRightLines.push({
-          lineNum: 0,
-          content: '',
-          changeType: 'empty',
-          isDiff: false
-        });
         added++;
       } else if (oldContent && newContent) {
+        // 两侧都有：左侧显示旧内容，右侧显示新内容
         alignedLeftLines.push({
           lineNum: leftLineNum++,
-          content: newContent,
+          content: oldContent,
           changeType: 'unchanged',
           isDiff: false
         });
         alignedRightLines.push({
           lineNum: rightLineNum++,
-          content: oldContent,
+          content: newContent,
           changeType: 'unchanged',
           isDiff: false
         });

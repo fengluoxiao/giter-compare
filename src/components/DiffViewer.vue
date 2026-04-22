@@ -42,6 +42,7 @@
             class="version-select"
             @change="$emit('change-old-version', ($event.target as HTMLSelectElement).value)"
           >
+            <option value="HEAD">HEAD (最新提交)</option>
             <option v-for="commit in commitList" :key="commit.hash" :value="commit.hash">
               {{ commit.short_hash }} - {{ commit.message }}
             </option>
@@ -84,8 +85,9 @@
           <div class="pane-header">
             <span class="pane-title">{{ isFileViewMode ? '文件内容' : '旧版本' }}</span>
           </div>
-          <div class="code-content" ref="leftCodeContent" @scroll="syncScroll('left')">
-            <ShikiDiffLines
+          <div class="code-content" ref="leftCodeContent">
+            <VirtualDiffLines
+              ref="leftVirtualDiff"
               :lines="leftLines"
               :filename="currentFile?.path || ''"
               :theme="theme || 'light'"
@@ -94,6 +96,7 @@
               :highlighted-line="highlightedLine"
               :blame-info="props.leftBlameInfo"
               @line-click="onLeftLineClick"
+              @scroll="handleVirtualScroll"
             />
           </div>
         </div>
@@ -102,8 +105,9 @@
           <div class="pane-header">
             <span class="pane-title">{{ isFileViewMode ? '文件内容' : '新版本' }}</span>
           </div>
-          <div class="code-content" ref="rightCodeContent" @scroll="syncScroll('right')">
-            <ShikiDiffLines
+          <div class="code-content" ref="rightCodeContent">
+            <VirtualDiffLines
+              ref="rightVirtualDiff"
               :lines="rightLines"
               :filename="currentFile?.path || ''"
               :theme="theme || 'light'"
@@ -112,6 +116,7 @@
               :highlighted-line="highlightedLine"
               :blame-info="props.rightBlameInfo"
               @line-click="onRightLineClick"
+              @scroll="handleVirtualScroll"
             />
           </div>
         </div>
@@ -141,7 +146,7 @@
 
 <script setup lang="ts">
 import { ref, watch, nextTick, computed, onMounted, onUnmounted } from 'vue';
-import ShikiDiffLines from './ShikiDiffLines.vue';
+import VirtualDiffLines from './VirtualDiffLines.vue';
 import Minimap from './Minimap.vue';
 import InlineSearch from './InlineSearch.vue';
 
@@ -208,8 +213,10 @@ const props = defineProps<{
   rightBlameInfo?: BlameInfo[];
 }>();
 
-// 判断是否是文件查看模式（通过检查文件状态是否为空）
+// 判断是否是文件查看模式（通过检查文件状态是否为空，且没有diff数据）
 const isFileViewMode = computed(() => {
+  // 如果有 diffStats，说明是 diff 模式
+  if (props.diffStats) return false;
   return props.currentFile && !props.currentFile.status;
 });
 
@@ -245,6 +252,8 @@ watch(() => props.rightBlameInfo, (newVal) => {
 // 代码内容区域 refs，用于同步滚动
 const leftCodeContent = ref<HTMLElement | null>(null);
 const rightCodeContent = ref<HTMLElement | null>(null);
+const leftVirtualDiff = ref<InstanceType<typeof VirtualDiffLines> | null>(null);
+const rightVirtualDiff = ref<InstanceType<typeof VirtualDiffLines> | null>(null);
 const inlineSearch = ref<InstanceType<typeof InlineSearch> | null>(null);
 let isSyncing = false;
 
@@ -371,42 +380,46 @@ const handleKeyDown = (event: KeyboardEvent) => {
   }
 };
 
-// 同步滚动函数
-const syncScroll = (source: 'left' | 'right') => {
+// 处理虚拟滚动组件的滚动事件
+let syncTimeout: ReturnType<typeof setTimeout> | null = null;
+const handleVirtualScroll = (scrollTop: number) => {
   if (isSyncing) return;
-  isSyncing = true;
 
-  const sourceEl = source === 'left' ? leftCodeContent.value : rightCodeContent.value;
-  const targetEl = source === 'left' ? rightCodeContent.value : leftCodeContent.value;
+  // 更新 minimap 状态
+  leftScrollTop.value = scrollTop;
+  codeContainerHeight.value = leftCodeContent.value?.clientHeight || 0;
+  codeContentHeight.value = props.leftLines.length * 24;
+  emit('scroll', scrollTop);
 
-  if (sourceEl && targetEl) {
-    // 同步纵向滚动
-    targetEl.scrollTop = sourceEl.scrollTop;
-    // 同步横向滚动
-    targetEl.scrollLeft = sourceEl.scrollLeft;
+  // 同步另一侧滚动
+  if (leftVirtualDiff.value && rightVirtualDiff.value) {
+    isSyncing = true;
+
+    // 判断是哪个组件触发的滚动
+    const leftContainer = leftVirtualDiff.value.containerRef;
+    if (leftContainer && Math.abs(leftContainer.scrollTop - scrollTop) < 2) {
+      // 左侧触发，同步右侧
+      rightVirtualDiff.value.syncScrollTo(scrollTop);
+    } else {
+      // 右侧触发，同步左侧
+      leftVirtualDiff.value.syncScrollTo(scrollTop);
+    }
+
+    // 延迟重置同步标志，避免循环
+    if (syncTimeout) clearTimeout(syncTimeout);
+    syncTimeout = setTimeout(() => {
+      isSyncing = false;
+    }, 50);
   }
-
-  // 更新 minimap 的 scrollTop
-  if (sourceEl) {
-    leftScrollTop.value = sourceEl.scrollTop;
-    codeContainerHeight.value = sourceEl.clientHeight;
-    codeContentHeight.value = sourceEl.scrollHeight;
-    emit('scroll', sourceEl.scrollTop);
-  }
-
-  // 使用 requestAnimationFrame 确保同步
-  requestAnimationFrame(() => {
-    isSyncing = false;
-  });
 };
 
 // Minimap 跳转处理
 const handleMinimapJump = (scrollTop: number) => {
-  if (!leftCodeContent.value) return;
-
-  leftCodeContent.value.scrollTop = scrollTop;
-  if (rightCodeContent.value) {
-    rightCodeContent.value.scrollTop = scrollTop;
+  if (leftVirtualDiff.value) {
+    leftVirtualDiff.value.syncScrollTo(scrollTop);
+  }
+  if (rightVirtualDiff.value) {
+    rightVirtualDiff.value.syncScrollTo(scrollTop);
   }
 
   // 更新 minimap 状态
@@ -537,7 +550,8 @@ watch(() => props.leftLines, () => {
 defineExpose({
   leftCodeContent,
   rightCodeContent,
-  syncScroll
+  leftVirtualDiff,
+  rightVirtualDiff
 });
 </script>
 
@@ -655,6 +669,7 @@ defineExpose({
   display: flex;
   flex-direction: column;
   overflow: hidden;
+  min-width: 0; /* 允许子元素收缩 */
 }
 
 .pane-header {
@@ -683,6 +698,8 @@ defineExpose({
   text-rendering: optimizeLegibility;
   font-feature-settings: "kern" 1, "liga" 1, "calt" 1, "zero" 1, "ss01" 1;
   font-variant-ligatures: contextual;
+  /* 确保横向滚动 */
+  min-width: 0;
 }
 
 .diff-divider {
