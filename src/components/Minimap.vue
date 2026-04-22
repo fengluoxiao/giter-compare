@@ -147,30 +147,30 @@ const render = () => {
 watch(() => props.leftLines, render, { deep: true });
 watch(() => props.rightLines, render, { deep: true });
 
+// 主题变化 observer 引用
+let themeObserver: MutationObserver | null = null;
+
 onMounted(() => {
   render();
   window.addEventListener('resize', render);
 
   // 监听主题变化
-  const observer = new MutationObserver(() => {
+  themeObserver = new MutationObserver(() => {
     render();
   });
-  observer.observe(document.body, {
+  themeObserver.observe(document.body, {
     attributes: true,
     attributeFilter: ['data-theme']
   });
-
-  // 保存 observer 引用以便清理
-  (minimapRef.value as any)?._themeObserver = observer;
 });
 
 onUnmounted(() => {
   window.removeEventListener('resize', render);
 
   // 清理 observer
-  const observer = (minimapRef.value as any)?._themeObserver;
-  if (observer) {
-    observer.disconnect();
+  if (themeObserver) {
+    themeObserver.disconnect();
+    themeObserver = null;
   }
 });
 
