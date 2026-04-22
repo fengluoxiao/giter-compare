@@ -4002,12 +4002,16 @@ const doTextCompare = async () => {
 }
 
 .history-hash {
-  font-family: 'SF Mono', Monaco, monospace;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', Monaco, monospace;
   font-size: 12px;
   color: #4a7eff;
   background-color: #eef2ff;
   padding: 2px 8px;
   border-radius: 4px;
+  /* 字体渲染优化 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 .history-date {
@@ -4042,7 +4046,11 @@ const doTextCompare = async () => {
   border-bottom: 1px solid #e8e8e8;
   font-size: 12px;
   color: #666;
-  font-family: 'SF Mono', Monaco, monospace;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', Monaco, monospace;
+  /* 字体渲染优化 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 .file-content-body {
@@ -4055,13 +4063,19 @@ const doTextCompare = async () => {
 .file-content-pre {
   margin: 0;
   padding: 16px 20px;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', Monaco, monospace;
   font-size: 13px;
   line-height: 1.6;
   color: #333;
   white-space: pre-wrap;
   word-wrap: break-word;
   background-color: transparent;
+  /* 字体渲染优化 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1, "zero" 1, "ss01" 1;
+  font-variant-ligatures: contextual;
 }
 
 .file-content-pre code {
@@ -4123,8 +4137,12 @@ const doTextCompare = async () => {
 .diff-toggle-label {
   font-size: 12px;
   color: #555;
-  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans SC', 'Microsoft YaHei', sans-serif;
   font-weight: 500;
+  /* 字体渲染优化 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
 }
 
 .settings-header {
@@ -4291,11 +4309,17 @@ const doTextCompare = async () => {
   color: #333;
   background-color: #fff;
   resize: vertical;
-  font-family: 'SF Mono', Monaco, 'Cascadia Code', monospace;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', Monaco, monospace;
   box-sizing: border-box;
   min-width: 0;
   line-height: 1.5;
   box-shadow: inset 0 1px 2px rgba(0,0,0,0.04);
+  /* 字体渲染优化 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1, "zero" 1, "ss01" 1;
+  font-variant-ligatures: contextual;
 }
 
 .settings-textarea:focus {

@@ -218,9 +218,15 @@ watch(() => [props.lines, props.filename, props.theme], () => {
   height: 24px;
   min-height: 24px;
   line-height: 24px;
-  font-family: 'JetBrains Mono', 'Fira Code', monospace;
+  font-family: 'JetBrains Mono', 'Fira Code', 'Cascadia Code', 'SF Mono', Monaco, monospace;
   font-size: 13px;
   box-sizing: border-box;
+  /* 字体渲染优化 */
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  text-rendering: optimizeLegibility;
+  font-feature-settings: "kern" 1, "liga" 1, "calt" 1, "zero" 1, "ss01" 1;
+  font-variant-ligatures: contextual;
 }
 
 .diff-line.unchanged {
