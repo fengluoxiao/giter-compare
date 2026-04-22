@@ -598,6 +598,7 @@ interface FileNode {
 interface GitStatus {
   path: string;
   status: string;
+  name?: string;
 }
 
 interface DiffLine {
@@ -784,6 +785,37 @@ const projectVersionSettings = new Map<string, {
   leftBranch: string;
   rightBranch: string;
 }>();
+const PROJECT_SETTINGS_MAX_SIZE = 20; // 最多缓存20个项目的版本设置
+
+// 设置项目版本设置（带大小限制）
+const setProjectVersionSettings = (projectPath: string, settings: {
+  leftVersion: string;
+  rightVersion: string;
+  compareBranches: boolean;
+  leftBranch: string;
+  rightBranch: string;
+}) => {
+  // 如果缓存已满，删除最旧的条目
+  if (projectVersionSettings.size >= PROJECT_SETTINGS_MAX_SIZE && !projectVersionSettings.has(projectPath)) {
+    const firstKey = projectVersionSettings.keys().next().value;
+    if (firstKey) {
+      projectVersionSettings.delete(firstKey);
+      console.log(`Removed oldest project settings: ${firstKey}`);
+    }
+  }
+  projectVersionSettings.set(projectPath, settings);
+};
+
+// 导出供其他函数使用
+const saveProjectVersionSettings = (projectPath: string, settings: {
+  leftVersion: string;
+  rightVersion: string;
+  compareBranches: boolean;
+  leftBranch: string;
+  rightBranch: string;
+}) => {
+  setProjectVersionSettings(projectPath, settings);
+};
 
 // 根据旧版本选择，计算可用的新版本列表
 const availableNewVersions = computed(() => {
@@ -933,10 +965,18 @@ const onDiffNewBranchChange = async (branch: string) => {
 };
 
 // 保存版本设置并刷新
-const saveAndRefreshVersions = async () => {
+// 用于防抖的定时器
+let refreshVersionsTimeout: ReturnType<typeof setTimeout> | null = null;
+
+const saveAndRefreshVersions = () => {
+  // 清除之前的定时器，实现防抖
+  if (refreshVersionsTimeout) {
+    clearTimeout(refreshVersionsTimeout);
+  }
+
   // 保存到内存 Map（不持久化，重启后恢复默认）
   if (projectSettings.value.path) {
-    projectVersionSettings.set(projectSettings.value.path, {
+    saveProjectVersionSettings(projectSettings.value.path, {
       leftVersion: projectSettings.value.leftVersion,
       rightVersion: projectSettings.value.rightVersion,
       compareBranches: projectSettings.value.compareBranches,
@@ -953,30 +993,47 @@ const saveAndRefreshVersions = async () => {
     }
   }
 
-  // 刷新当前显示的文件并更新视图
-  if (currentFile.value) {
-    const diffResult = await loadFileDiff(currentFile.value, true);
-    if (diffResult) {
-      leftLines.value = diffResult.leftLines;
-      rightLines.value = diffResult.rightLines;
-      isBinary.value = diffResult.isBinary;
-      diffStats.value = diffResult.diffStats;
+  // 使用 setTimeout 延迟执行，避免频繁切换版本时卡顿
+  refreshVersionsTimeout = setTimeout(() => {
+    const startTime = performance.now();
+    console.log('[Performance] Starting version switch...');
 
-      // 更新当前激活的标签页
-      if (activeTabId.value) {
-        const activeTab = tabs.value.find(t => t.id === activeTabId.value);
-        if (activeTab) {
-          activeTab.leftLines = diffResult.leftLines;
-          activeTab.rightLines = diffResult.rightLines;
-          activeTab.isBinary = diffResult.isBinary;
-          activeTab.diffStats = diffResult.diffStats;
-        }
-      }
+    // 先立即更新文件列表（不阻塞）
+    const priorityFile = currentFile.value?.path;
+    loadStagedFiles(priorityFile).then(() => {
+      console.log(`[Performance] loadStagedFiles completed in ${(performance.now() - startTime).toFixed(2)}ms`);
+    }).catch(e => console.error('Failed to load staged files:', e));
+
+    // 然后在后台加载当前文件的 diff（不阻塞 UI）
+    if (currentFile.value) {
+      // 使用 requestAnimationFrame 确保 UI 先更新
+      requestAnimationFrame(() => {
+        const diffStartTime = performance.now();
+        loadFileDiff(currentFile.value!, true).then(diffResult => {
+          console.log(`[Performance] loadFileDiff completed in ${(performance.now() - diffStartTime).toFixed(2)}ms`);
+          if (diffResult) {
+            leftLines.value = diffResult.leftLines;
+            rightLines.value = diffResult.rightLines;
+            isBinary.value = diffResult.isBinary;
+            diffStats.value = diffResult.diffStats;
+
+            // 更新当前激活的标签页
+            if (activeTabId.value) {
+              const activeTab = tabs.value.find(t => t.id === activeTabId.value);
+              if (activeTab) {
+                activeTab.leftLines = diffResult.leftLines;
+                activeTab.rightLines = diffResult.rightLines;
+                activeTab.isBinary = diffResult.isBinary;
+                activeTab.diffStats = diffResult.diffStats;
+              }
+            }
+          }
+        }).catch(e => console.error('Failed to load file diff:', e));
+      });
     }
-  }
 
-  // 刷新更改列表
-  await loadStagedFiles();
+    refreshVersionsTimeout = null;
+  }, 50); // 50ms 防抖延迟，更快响应
 };
 
 // 打开项目设置
@@ -1015,7 +1072,7 @@ const saveProjectSettings = async () => {
   console.log('保存项目设置:', projectSettings.value);
   // 保存比对版本设置到内存 Map（不持久化，重启后恢复默认）
   if (projectSettings.value.path) {
-    projectVersionSettings.set(projectSettings.value.path, {
+    saveProjectVersionSettings(projectSettings.value.path, {
       leftVersion: projectSettings.value.leftVersion,
       rightVersion: projectSettings.value.rightVersion,
       compareBranches: projectSettings.value.compareBranches,
@@ -1119,11 +1176,15 @@ const fetchCurrentBranch = async () => {
   }
 };
 
-// 文件树缓存 - 键为项目路径，值为文件树数据（永久缓存，文件变更时自动刷新）
+// 文件树缓存 - 键为项目路径，值为文件树数据
 const fileTreeCache = ref<Map<string, { tree: FileNode[]; changes: GitStatus[]; timestamp: number }>>(new Map());
+const FILE_TREE_CACHE_MAX_SIZE = 5; // 最多缓存5个项目的文件树
+const FILE_TREE_CACHE_EXPIRY = 30 * 60 * 1000; // 30分钟过期
 
-// Diff 缓存 - 键为"项目路径:文件路径"，值为 diff 结果（永久缓存，文件变更时自动刷新）
+// Diff 缓存 - 键为"项目路径:文件路径"，值为 diff 结果
 const diffCache = ref<Map<string, { leftLines: DiffLine[]; rightLines: DiffLine[]; isBinary: boolean; diffStats: any; timestamp: number }>>(new Map());
+const DIFF_CACHE_MAX_SIZE = 50; // 最多缓存50个文件的diff
+const DIFF_CACHE_EXPIRY = 10 * 60 * 1000; // 10分钟过期
 
 // 暂存区状态
 const stagedFiles = ref<{ name: string; path: string; status?: string }[]>([]);
@@ -1204,6 +1265,10 @@ onMounted(async () => {
   if (savedShowDeleted !== null) {
     showDeletedFiles.value = savedShowDeleted === 'true';
   }
+
+  // 启动时清除所有缓存，确保显示最新的变更状态
+  clearFileTreeCache();
+  clearDiffCache();
 
   // 等待 Tauri 完全准备好后再加载工作区和项目
   setTimeout(async () => {
@@ -2232,6 +2297,12 @@ const importProjects = async () => {
           }
         }
 
+        // 同步更新当前工作区的项目列表
+        const currentWorkspace = workspaces.value.find(w => w.id === currentWorkspaceId.value);
+        if (currentWorkspace) {
+          currentWorkspace.projects = [...projects.value];
+        }
+
         saveWorkspaces();
 
         // 预加载所有新导入项目的缓存
@@ -2470,8 +2541,20 @@ const buildFileTreeRecursive = async (
   return root;
 };
 
+// 清理过期的文件树缓存
+const cleanExpiredFileTreeCache = () => {
+  const now = Date.now();
+  for (const [key, value] of fileTreeCache.value.entries()) {
+    if (now - value.timestamp > FILE_TREE_CACHE_EXPIRY) {
+      fileTreeCache.value.delete(key);
+      console.log(`Expired file tree cache removed: ${key}`);
+    }
+  }
+};
+
 // 获取缓存的文件树
 const getCachedFileTree = (path: string): { tree: FileNode[]; changes: GitStatus[] } | null => {
+  cleanExpiredFileTreeCache();
   const cached = fileTreeCache.value.get(path);
   if (!cached) return null;
 
@@ -2481,6 +2564,22 @@ const getCachedFileTree = (path: string): { tree: FileNode[]; changes: GitStatus
 
 // 设置缓存的文件树
 const setCachedFileTree = (path: string, tree: FileNode[], changes: GitStatus[]) => {
+  // 如果缓存已满，删除最旧的缓存
+  if (fileTreeCache.value.size >= FILE_TREE_CACHE_MAX_SIZE) {
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+    for (const [key, value] of fileTreeCache.value.entries()) {
+      if (value.timestamp < oldestTime) {
+        oldestTime = value.timestamp;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey) {
+      fileTreeCache.value.delete(oldestKey);
+      console.log(`Removed oldest file tree cache: ${oldestKey}`);
+    }
+  }
+
   fileTreeCache.value.set(path, {
     tree: JSON.parse(JSON.stringify(tree)), // 深拷贝避免引用问题
     changes: [...changes],
@@ -2507,15 +2606,29 @@ const loadFileTree = async (path: string, forceRefresh = false) => {
       const cached = getCachedFileTree(path);
       if (cached) {
         fileTree.value = JSON.parse(JSON.stringify(cached.tree)); // 深拷贝避免引用问题
-        gitChanges.value = [...cached.changes];
+
+        // 即使有缓存，也要重新获取最新的 Git 状态
+        let latestChanges: GitStatus[] = [];
+        try {
+          latestChanges = await invoke<GitStatus[]>('get_working_tree_changes', { repoPath: path });
+        } catch (e) {
+          console.log('Not a git repository or error getting changes');
+        }
+        gitChanges.value = latestChanges;
+
+        // 更新文件树中的状态
+        await updateFileTreeStatus(fileTree.value, latestChanges);
 
         // 如果有已删除的文件且用户选择显示，则添加到文件树
         if (showDeletedFiles.value) {
-          const deletedChanges = cached.changes.filter((c: GitStatus) => c.status === 'Deleted');
+          const deletedChanges = latestChanges.filter((c: GitStatus) => c.status === 'Deleted');
           for (const deleted of deletedChanges) {
             addDeletedFileToTree(deleted.path);
           }
         }
+
+        // 更新缓存中的变更状态
+        setCachedFileTree(path, fileTree.value, latestChanges);
         return;
       }
     }
@@ -2599,11 +2712,56 @@ const addDeletedFileToTree = (filePath: string) => {
   }
 };
 
+// 流式加载配置
+const STREAM_BATCH_SIZE = 20; // 每批处理的文件数量
+const STREAM_DELAY_MS = 0; // 每批之间的延迟（使用 requestAnimationFrame 时为 0）
+
+// 将文件列表分批处理
+const processFilesInBatches = async (
+  files: GitStatus[],
+  onBatch: (batch: GitStatus[]) => void,
+  onComplete: () => void
+) => {
+  const totalFiles = files.length;
+  let processedCount = 0;
+
+  const processNextBatch = () => {
+    const batch = files.slice(processedCount, processedCount + STREAM_BATCH_SIZE);
+    if (batch.length === 0) {
+      onComplete();
+      return;
+    }
+
+    onBatch(batch);
+    processedCount += batch.length;
+
+    if (processedCount < totalFiles) {
+      // 使用 requestAnimationFrame 让 UI 有机会渲染
+      requestAnimationFrame(() => {
+        // 再使用 setTimeout(0) 确保事件循环有机会处理其他事件
+        setTimeout(processNextBatch, STREAM_DELAY_MS);
+      });
+    } else {
+      onComplete();
+    }
+  };
+
+  processNextBatch();
+};
+
 // 加载更改的文件列表（工作区中已修改但未暂存的文件，或两个版本之间的差异文件）
-const loadStagedFiles = async () => {
+// 支持流式加载：先立即显示当前文件，然后后台流式加载其他文件
+const loadStagedFiles = async (priorityFile?: string) => {
   if (!currentPath.value) return;
+  const totalStartTime = performance.now();
 
   try {
+    // 如果有优先文件，先保留它，否则清空列表
+    if (!priorityFile) {
+      stagedFiles.value = [];
+      gitChanges.value = [];
+    }
+
     let changedFiles: GitStatus[] = [];
     
     // 检查是否设置了版本对比
@@ -2614,6 +2772,7 @@ const loadStagedFiles = async () => {
     const isOldVersionCommit = oldVersion && oldVersion !== 'WORKING';
     const isNewVersionCommit = newVersion && newVersion !== 'WORKING';
     
+    const backendStartTime = performance.now();
     if (isOldVersionCommit || isNewVersionCommit) {
       // 使用版本对比获取差异文件
       console.log('Using version diff:', oldVersion, '->', newVersion);
@@ -2629,49 +2788,107 @@ const loadStagedFiles = async () => {
         repoPath: currentPath.value
       });
     }
+    console.log(`[Performance] Backend call completed in ${(performance.now() - backendStartTime).toFixed(2)}ms, got ${changedFiles.length} files`);
 
     // 过滤掉未跟踪的文件，只显示已修改、已删除、已重命名的文件
+    // 同时过滤掉以 / 结尾的路径（Git 报告的目录变更）
     const filteredFiles = changedFiles.filter(change => {
       const status = change.status.toLowerCase();
+      // 过滤掉目录路径（以 / 或 \ 结尾）
+      if (change.path.endsWith('/') || change.path.endsWith('\\')) {
+        return false;
+      }
       return status === 'modified' || status === 'deleted' || status === 'renamed' || status === 'added';
     });
 
-    // 进一步过滤掉文件夹路径（Git 有时会将文件夹报告为变更）
-    const fileOnlyChanges = await Promise.all(filteredFiles.map(async change => {
-      const fullPath = `${currentPath.value}/${change.path}`;
-      try {
-        // 尝试读取路径，如果是文件夹，会返回目录内容
-        const entries = await invoke<any[]>('read_directory', { path: fullPath });
-        // 如果能读取成功，说明是文件夹，排除它
-        return null;
-      } catch (e) {
-        // 读取失败，说明是文件（或不存在），保留它
-        return change;
-      }
-    }));
+    // 直接映射结果，不再进行昂贵的文件系统检查
+    const finalChanges = filteredFiles.map(change => {
+      const parts = change.path.split(/[\\/]/);
+      return {
+        name: parts[parts.length - 1] || change.path,
+        path: change.path,
+        status: change.status
+      };
+    });
 
-    const finalChanges = fileOnlyChanges
-      .filter(change => change !== null)
-      .map(change => {
-        const parts = (change as GitStatus).path.split(/[\\/]/);
-        return {
-          name: parts[parts.length - 1] || (change as GitStatus).path,
-          path: (change as GitStatus).path,
-          status: (change as GitStatus).status
-        };
-      });
+    // 如果有优先文件，先显示优先文件
+    if (priorityFile) {
+      const priorityChange = finalChanges.find(c => c.path === priorityFile);
+      if (priorityChange) {
+        // 立即显示优先文件
+        stagedFiles.value = [priorityChange];
+        gitChanges.value = [priorityChange];
+        await updateFileTreeStatus(fileTree.value, [priorityChange]);
+        
+        // 后台流式加载其他文件
+        const otherChanges = finalChanges.filter(c => c.path !== priorityFile);
+        if (otherChanges.length > 0) {
+          // 使用 setTimeout 让当前操作先完成，不阻塞 UI
+          setTimeout(() => {
+            streamLoadRemainingFiles(otherChanges, [priorityChange]);
+          }, 0);
+        }
+        return;
+      }
+    }
+
+    // 如果文件数量较少，直接显示
+    if (finalChanges.length <= STREAM_BATCH_SIZE) {
+      stagedFiles.value = finalChanges;
+      gitChanges.value = finalChanges;
+      await updateFileTreeStatus(fileTree.value, finalChanges);
+      return;
+    }
+
+    // 流式加载：分批处理并更新 UI
+    const accumulatedChanges: typeof finalChanges = [];
     
-    stagedFiles.value = finalChanges;
-    
-    // 同时更新 gitChanges 和文件树状态
-    gitChanges.value = finalChanges;
-    updateFileTreeStatus(fileTree.value, finalChanges);
+    await new Promise<void>((resolve) => {
+      processFilesInBatches(
+        finalChanges,
+        (batch) => {
+          // 每批处理：累积并更新 UI
+          accumulatedChanges.push(...batch);
+          stagedFiles.value = [...accumulatedChanges];
+          gitChanges.value = [...accumulatedChanges];
+          // 分批更新文件树状态，避免一次性处理大量文件导致卡顿
+          updateFileTreeStatus(fileTree.value, accumulatedChanges);
+        },
+        () => {
+          // 完成处理
+          resolve();
+        }
+      );
+    });
     
   } catch (e) {
     console.error('Failed to load changed files:', e);
     stagedFiles.value = [];
     gitChanges.value = [];
   }
+};
+
+// 后台流式加载剩余文件（不阻塞用户操作）
+const streamLoadRemainingFiles = (
+  remainingFiles: GitStatus[],
+  existingFiles: GitStatus[]
+) => {
+  const accumulatedChanges = [...existingFiles];
+  
+  processFilesInBatches(
+    remainingFiles,
+    (batch) => {
+      // 每批处理：累积并更新 UI
+      accumulatedChanges.push(...batch);
+      stagedFiles.value = [...accumulatedChanges];
+      gitChanges.value = [...accumulatedChanges];
+      // 分批更新文件树状态
+      updateFileTreeStatus(fileTree.value, accumulatedChanges);
+    },
+    () => {
+      console.log('Stream loading completed, total files:', accumulatedChanges.length);
+    }
+  );
 };
 
 // 插件变更回调
@@ -2749,20 +2966,46 @@ const refresh = async (forceReload = false) => {
 };
 
 // 更新文件树状态（不重建树结构）
-const updateFileTreeStatus = (nodes: FileNode[], changes: GitStatus[]) => {
-  for (const node of nodes) {
-    if (node.type === 'file') {
-      const change = changes.find(c => c.path === node.path);
-      if (change) {
-        node.status = change.status;
+// 异步更新文件树状态，避免阻塞 UI
+const updateFileTreeStatus = async (nodes: FileNode[], changes: GitStatus[]) => {
+  // 将变更映射为 Set，提高查找性能
+  const changeSet = new Set(changes.map(c => c.path));
+  const changeMap = new Map(changes.map(c => [c.path, c.status]));
+
+  // 分批处理节点，每批处理后让出时间片
+  const BATCH_SIZE = 100;
+  const allNodes: FileNode[] = [];
+
+  // 收集所有文件节点（展平树结构）
+  const collectNodes = (nodeList: FileNode[]) => {
+    for (const node of nodeList) {
+      if (node.type === 'file') {
+        allNodes.push(node);
+      }
+      if (node.children && node.children.length > 0) {
+        collectNodes(node.children);
+      }
+    }
+  };
+
+  collectNodes(nodes);
+
+  // 分批更新，避免阻塞
+  for (let i = 0; i < allNodes.length; i += BATCH_SIZE) {
+    const batch = allNodes.slice(i, i + BATCH_SIZE);
+
+    // 同步更新这批节点
+    for (const node of batch) {
+      if (changeSet.has(node.path)) {
+        node.status = changeMap.get(node.path);
       } else {
         node.status = undefined;
       }
     }
-    // 文件夹不设置 status，因为 Git 不会跟踪文件夹本身
-    // 文件夹的状态通过 has-changes 类由其子文件体现
-    if (node.children && node.children.length > 0) {
-      updateFileTreeStatus(node.children, changes);
+
+    // 如果不是最后一批，让出时间片
+    if (i + BATCH_SIZE < allNodes.length) {
+      await new Promise(resolve => setTimeout(resolve, 0));
     }
   }
 };
@@ -2779,8 +3022,20 @@ const getDiffCacheKey = (projectPath: string, filePath: string) => {
   return `${projectPath}:${filePath}:${oldV}:${newV}`;
 };
 
+// 清理过期的 diff 缓存
+const cleanExpiredDiffCache = () => {
+  const now = Date.now();
+  for (const [key, value] of diffCache.value.entries()) {
+    if (now - value.timestamp > DIFF_CACHE_EXPIRY) {
+      diffCache.value.delete(key);
+      console.log(`Expired diff cache removed: ${key}`);
+    }
+  }
+};
+
 // 获取 diff 缓存
 const getDiffFromCache = (key: string): { leftLines: DiffLine[]; rightLines: DiffLine[]; isBinary: boolean; diffStats: any } | null => {
+  cleanExpiredDiffCache();
   const cached = diffCache.value.get(key);
   if (!cached) return null;
 
@@ -2795,6 +3050,22 @@ const getDiffFromCache = (key: string): { leftLines: DiffLine[]; rightLines: Dif
 
 // 设置 diff 缓存
 const setDiffCache = (key: string, result: { leftLines: DiffLine[]; rightLines: DiffLine[]; isBinary: boolean; diffStats: any }) => {
+  // 如果缓存已满，删除最旧的缓存
+  if (diffCache.value.size >= DIFF_CACHE_MAX_SIZE) {
+    let oldestKey: string | null = null;
+    let oldestTime = Infinity;
+    for (const [key, value] of diffCache.value.entries()) {
+      if (value.timestamp < oldestTime) {
+        oldestTime = value.timestamp;
+        oldestKey = key;
+      }
+    }
+    if (oldestKey) {
+      diffCache.value.delete(oldestKey);
+      console.log(`Removed oldest diff cache: ${oldestKey}`);
+    }
+  }
+
   diffCache.value.set(key, {
     leftLines: JSON.parse(JSON.stringify(result.leftLines)),
     rightLines: JSON.parse(JSON.stringify(result.rightLines)),
@@ -2821,12 +3092,14 @@ const clearDiffCache = (projectPath?: string) => {
 
 // 加载文件 diff 内容
 const loadFileDiff = async (file: FileNode, forceRefresh = false): Promise<{ leftLines: DiffLine[]; rightLines: DiffLine[]; isBinary: boolean; diffStats: any } | null> => {
+  const totalStartTime = performance.now();
   const cacheKey = getDiffCacheKey(currentPath.value, file.path);
 
   // 尝试使用缓存
   if (!forceRefresh) {
     const cached = getDiffFromCache(cacheKey);
     if (cached) {
+      console.log(`[Performance] loadFileDiff used cache for ${file.path}`);
       return cached;
     }
   }
@@ -2838,6 +3111,7 @@ const loadFileDiff = async (file: FileNode, forceRefresh = false): Promise<{ lef
 
     // 获取旧版本内容（左边）
     const oldVersion = projectSettings.value.leftVersion;
+    const contentStartTime = performance.now();
     if (oldVersion && oldVersion !== 'WORKING') {
       try {
         leftContent = await invoke<string>('get_file_content_at_revision', {
@@ -3141,6 +3415,7 @@ const loadFileDiff = async (file: FileNode, forceRefresh = false): Promise<{ lef
     // 加载 blame 信息
     await loadBlameInfo(file.path);
 
+    console.log(`[Performance] loadFileDiff completed in ${(performance.now() - totalStartTime).toFixed(2)}ms for ${file.path}`);
     return result;
   } catch (e) {
     console.error('Failed to load diff:', e);
@@ -3339,6 +3614,21 @@ const selectFile = async (path: string) => {
     newTab.rightLines = diffResult.rightLines;
     newTab.isBinary = diffResult.isBinary;
     newTab.diffStats = diffResult.diffStats;
+  }
+
+  // 限制最大标签页数量为10个，超出时关闭最旧的标签页
+  const MAX_TABS = 10;
+  if (tabs.value.length >= MAX_TABS) {
+    // 关闭最旧的非激活标签页
+    const nonActiveTabs = tabs.value.filter(t => t.id !== activeTabId.value);
+    if (nonActiveTabs.length > 0) {
+      const oldestTab = nonActiveTabs[0];
+      const index = tabs.value.findIndex(t => t.id === oldestTab.id);
+      if (index !== -1) {
+        tabs.value.splice(index, 1);
+        console.log(`Closed oldest tab: ${oldestTab.name}`);
+      }
+    }
   }
 
   tabs.value.push(newTab);

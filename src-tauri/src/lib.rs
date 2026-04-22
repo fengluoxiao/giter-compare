@@ -272,39 +272,60 @@ fn get_repo_status(repo_path: &str) -> Result<Vec<GitStatus>, String> {
 
 #[tauri::command]
 async fn get_working_tree_changes(repo_path: String) -> Result<Vec<GitStatus>, String> {
-    let repo = Repository::open(repo_path)
-        .map_err(|e| format!("Failed to open repository: {}", e))?;
+    // 使用 git status --porcelain 命令，比 libgit2 更快
+    let output = Command::new("git")
+        .args(&["status", "--porcelain", "-uall"])
+        .current_dir(&repo_path)
+        .output()
+        .map_err(|e| format!("Failed to execute git status: {}", e))?;
 
-    let mut status_opts = StatusOptions::new();
-    status_opts.show(StatusShow::Workdir);
-    status_opts.include_untracked(true);
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Git status failed: {}", stderr));
+    }
 
-    let statuses = repo
-        .statuses(Some(&mut status_opts))
-        .map_err(|e| format!("Failed to get statuses: {}", e))?;
-
+    let stdout = String::from_utf8_lossy(&output.stdout);
     let mut result = Vec::new();
 
-    for entry in statuses.iter() {
-        let path = entry.path().unwrap_or("").to_string();
-        let status = entry.status();
-
-        let status_str = if status.is_wt_new() {
-            "Added"
-        } else if status.is_wt_modified() {
-            "Modified"
-        } else if status.is_wt_deleted() {
-            "Deleted"
-        } else if status.is_wt_renamed() {
-            "Renamed"
-        } else {
+    for line in stdout.lines() {
+        if line.len() < 3 {
             continue;
+        }
+
+        // git status --porcelain 格式：XY PATH 或 XY ORIG_PATH -> PATH
+        // X = index status, Y = worktree status
+        // 我们只关心 worktree status (Y)
+        let worktree_status = line.chars().nth(1).unwrap_or(' ');
+        let path = line[3..].to_string();
+
+        let status_str = match worktree_status {
+            'M' => "Modified",
+            'A' => "Added",
+            'D' => "Deleted",
+            'R' => "Renamed",
+            'C' => "Added",  // Copied treated as Added
+            'T' => "Modified", // Type changed treated as Modified
+            '?' => "Added",  // Untracked treated as Added
+            _ => continue,
         };
 
-        result.push(GitStatus {
-            path,
-            status: status_str.to_string(),
-        });
+        // 处理重命名格式：R  ORIG_PATH -> PATH
+        let final_path = if worktree_status == 'R' || worktree_status == 'C' {
+            if let Some(pos) = path.find(" -> ") {
+                path[pos + 4..].to_string()
+            } else {
+                path
+            }
+        } else {
+            path
+        };
+
+        if !final_path.is_empty() {
+            result.push(GitStatus {
+                path: final_path,
+                status: status_str.to_string(),
+            });
+        }
     }
 
     Ok(result)
@@ -351,85 +372,70 @@ async fn get_staged_changes(repo_path: String) -> Result<Vec<GitStatus>, String>
 
 #[tauri::command]
 async fn get_diff_between_versions(repo_path: String, old_version: String, new_version: String) -> Result<Vec<GitStatus>, String> {
-    let repo = Repository::open(repo_path)
-        .map_err(|e| format!("Failed to open repository: {}", e))?;
-
-    // 解析旧版本
-    let old_obj = repo
-        .revparse_single(&old_version)
-        .map_err(|e| format!("Failed to resolve old version '{}': {}", old_version, e))?;
-    let old_commit = old_obj
-        .peel_to_commit()
-        .map_err(|e| format!("Failed to peel to commit: {}", e))?;
-    let old_tree = old_commit
-        .tree()
-        .map_err(|e| format!("Failed to get commit tree: {}", e))?;
-
-    // 解析新版本
-    let new_tree_oid = if new_version == "WORKING" {
-        // 工作区版本，使用 index 树
-        let mut index = repo.index().map_err(|e| format!("Failed to get index: {}", e))?;
-        index
-            .write_tree_to(&repo)
-            .map_err(|e| format!("Failed to write tree: {}", e))?
+    // 使用 git diff --name-status 命令，比 libgit2 的 diff_tree_to_tree 快得多
+    let output = if new_version == "WORKING" {
+        Command::new("git")
+            .args(&["diff", "--name-status", &old_version])
+            .current_dir(&repo_path)
+            .output()
+            .map_err(|e| format!("Failed to execute git diff: {}", e))?
     } else {
-        let new_obj = repo
-            .revparse_single(&new_version)
-            .map_err(|e| format!("Failed to resolve new version '{}': {}", new_version, e))?;
-        let new_commit = new_obj
-            .peel_to_commit()
-            .map_err(|e| format!("Failed to peel to commit: {}", e))?;
-        new_commit.tree_id()
+        Command::new("git")
+            .args(&["diff", "--name-status", &old_version, &new_version])
+            .current_dir(&repo_path)
+            .output()
+            .map_err(|e| format!("Failed to execute git diff: {}", e))?
     };
-    
-    let new_tree = repo
-        .find_tree(new_tree_oid)
-        .map_err(|e| format!("Failed to find new tree: {}", e))?;
 
-    // 获取差异
-    let diff = repo
-        .diff_tree_to_tree(Some(&old_tree), Some(&new_tree), None)
-        .map_err(|e| format!("Failed to get diff: {}", e))?;
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("Git diff failed: {}", stderr));
+    }
 
+    let stdout = String::from_utf8_lossy(&output.stdout);
     let mut result = Vec::new();
 
-    diff.foreach(
-        &mut |delta, _| {
-            let status = delta.status();
-            let path = delta.new_file().path().unwrap_or(Path::new("")).to_string_lossy().to_string();
-            if path.is_empty() {
-                let old_path = delta.old_file().path().unwrap_or(Path::new("")).to_string_lossy().to_string();
-                if !old_path.is_empty() {
-                    let status_str = match status {
-                        git2::Delta::Deleted => "Deleted",
-                        _ => return true,
-                    };
-                    result.push(GitStatus {
-                        path: old_path,
-                        status: status_str.to_string(),
-                    });
-                }
-                return true;
-            }
+    for line in stdout.lines() {
+        if line.is_empty() {
+            continue;
+        }
 
-            let status_str = match status {
-                git2::Delta::Added => "Added",
-                git2::Delta::Modified => "Modified",
-                git2::Delta::Deleted => "Deleted",
-                git2::Delta::Renamed => "Renamed",
-                _ => return true,
-            };
+        // 解析 git diff --name-status 的输出格式
+        // M	file.txt  (Modified)
+        // A	file.txt  (Added)
+        // D	file.txt  (Deleted)
+        // R100	old.txt	new.txt  (Renamed)
+        let parts: Vec<&str> = line.split('\t').collect();
+        if parts.is_empty() {
+            continue;
+        }
 
+        let status_char = parts[0].chars().next().unwrap_or(' ');
+        let status_str = match status_char {
+            'M' => "Modified",
+            'A' => "Added",
+            'D' => "Deleted",
+            'R' => "Renamed",
+            'C' => "Added",  // Copied treated as Added
+            'T' => "Modified", // Type changed treated as Modified
+            _ => continue,
+        };
+
+        // 获取文件路径
+        let path = if status_char == 'R' || status_char == 'C' {
+            // 重命名或复制：格式为 R100\told\tnew
+            parts.get(2).unwrap_or(&"").to_string()
+        } else {
+            parts.get(1).unwrap_or(&"").to_string()
+        };
+
+        if !path.is_empty() {
             result.push(GitStatus {
                 path,
                 status: status_str.to_string(),
             });
-            true
-        },
-        None,
-        None,
-        None,
-    ).map_err(|e| format!("Failed to iterate diff: {}", e))?;
+        }
+    }
 
     Ok(result)
 }

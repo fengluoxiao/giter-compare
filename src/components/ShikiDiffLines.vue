@@ -1,18 +1,23 @@
 <template>
-  <div class="shiki-diff-lines">
-    <div
-      v-for="(line, index) in lines"
-      :key="index"
-      class="diff-line"
-      :class="[line.changeType, { 'current-match': isCurrentMatch(index), 'jump-highlight': isJumpHighlight(index), 'selected': selectedLineIndex === index, 'has-blame': showBlameInfo }]"
-      :data-line="line.lineNum"
-      @click="onLineClick(index)"
-    >
-      <span class="line-number">{{ line.lineNum > 0 ? line.lineNum : '' }}</span>
-      <span v-if="showBlameInfo" class="blame-info" :title="getBlameTooltip(index)">
-        {{ getBlameText(index) }}
-      </span>
-      <span class="line-content" v-html="getLineContent(index)"></span>
+  <div class="shiki-diff-lines" ref="containerRef" @scroll="handleScroll">
+    <!-- 占位元素，保持滚动高度 -->
+    <div class="scroll-spacer" :style="{ height: totalHeight + 'px' }"></div>
+    <!-- 可见区域的行 -->
+    <div class="visible-lines" :style="{ transform: `translateY(${offsetY}px)` }">
+      <div
+        v-for="(line, index) in visibleLines"
+        :key="startIndex + index"
+        class="diff-line"
+        :class="[line.changeType, { 'current-match': isCurrentMatch(startIndex + index), 'jump-highlight': isJumpHighlight(startIndex + index), 'selected': selectedLineIndex === startIndex + index, 'has-blame': showBlameInfo }]"
+        :data-line="line.lineNum"
+        @click="onLineClick(startIndex + index)"
+      >
+        <span class="line-number">{{ line.lineNum > 0 ? line.lineNum : '' }}</span>
+        <span v-if="showBlameInfo" class="blame-info" :title="getBlameTooltip(startIndex + index)">
+          {{ getBlameText(startIndex + index) }}
+        </span>
+        <span class="line-content" v-html="getLineContent(startIndex + index)"></span>
+      </div>
     </div>
   </div>
 </template>
@@ -54,6 +59,48 @@ interface SearchMatch {
 
 const highlightedLines = ref<string[]>([]);
 const selectedLineIndex = ref<number | null>(null);
+
+// 虚拟滚动相关
+const containerRef = ref<HTMLElement | null>(null);
+const scrollTop = ref(0);
+const LINE_HEIGHT = 24; // 每行高度
+const BUFFER_LINES = 20; // 上下缓冲行数
+
+// 计算总高度
+const totalHeight = computed(() => {
+  return props.lines.length * LINE_HEIGHT;
+});
+
+// 计算可见区域的起始索引
+const startIndex = computed(() => {
+  const start = Math.floor(scrollTop.value / LINE_HEIGHT) - BUFFER_LINES;
+  return Math.max(0, start);
+});
+
+// 计算可见区域的结束索引
+const endIndex = computed(() => {
+  if (!containerRef.value) return props.lines.length;
+  const containerHeight = containerRef.value.clientHeight;
+  const end = Math.ceil((scrollTop.value + containerHeight) / LINE_HEIGHT) + BUFFER_LINES;
+  return Math.min(props.lines.length, end);
+});
+
+// 可见的行
+const visibleLines = computed(() => {
+  return props.lines.slice(startIndex.value, endIndex.value);
+});
+
+// 偏移量
+const offsetY = computed(() => {
+  return startIndex.value * LINE_HEIGHT;
+});
+
+// 处理滚动事件
+const handleScroll = () => {
+  if (containerRef.value) {
+    scrollTop.value = containerRef.value.scrollTop;
+  }
+};
 
 const emit = defineEmits<{
   'line-click': [lineIndex: number, lineNum: number];
@@ -208,9 +255,25 @@ watch(() => [props.lines, props.filename, props.theme], () => {
 
 <style scoped>
 .shiki-diff-lines {
-  display: flex;
-  flex-direction: column;
+  position: relative;
+  overflow: auto;
   min-width: fit-content;
+  height: 100%;
+}
+
+.scroll-spacer {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
+  pointer-events: none;
+}
+
+.visible-lines {
+  position: absolute;
+  top: 0;
+  left: 0;
+  width: 100%;
 }
 
 .diff-line {
