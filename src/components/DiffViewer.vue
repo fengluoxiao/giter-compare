@@ -92,6 +92,7 @@
               :search-matches="leftSearchMatches"
               :current-match-index="currentLeftMatchIndex"
               :highlighted-line="highlightedLine"
+              @line-click="onLeftLineClick"
             />
           </div>
         </div>
@@ -108,6 +109,7 @@
               :search-matches="rightSearchMatches"
               :current-match-index="currentRightMatchIndex"
               :highlighted-line="highlightedLine"
+              @line-click="onRightLineClick"
             />
           </div>
         </div>
@@ -236,6 +238,22 @@ const rightSearchMatches = ref<SearchMatch[]>([]);
 const currentLeftMatchIndex = ref(-1);
 const currentRightMatchIndex = ref(-1);
 const highlightedLine = ref<number | null>(null); // 当前高亮的行号
+
+// 行点击选中相关
+const selectedLeftLineIndex = ref<number | null>(null);
+const selectedRightLineIndex = ref<number | null>(null);
+
+// 处理左侧行点击
+const onLeftLineClick = (lineIndex: number, lineNum: number) => {
+  selectedLeftLineIndex.value = lineIndex;
+  selectedRightLineIndex.value = null;
+};
+
+// 处理右侧行点击
+const onRightLineClick = (lineIndex: number, lineNum: number) => {
+  selectedRightLineIndex.value = lineIndex;
+  selectedLeftLineIndex.value = null;
+};
 
 // 合并左右两侧内容用于搜索
 const combinedContent = computed(() => {

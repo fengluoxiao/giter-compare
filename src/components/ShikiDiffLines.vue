@@ -4,8 +4,9 @@
       v-for="(line, index) in lines"
       :key="index"
       class="diff-line"
-      :class="[line.changeType, { 'current-match': isCurrentMatch(index), 'jump-highlight': isJumpHighlight(index) }]"
+      :class="[line.changeType, { 'current-match': isCurrentMatch(index), 'jump-highlight': isJumpHighlight(index), 'selected': selectedLineIndex === index }]"
       :data-line="line.lineNum"
+      @click="onLineClick(index)"
     >
       <span class="line-number">{{ line.lineNum > 0 ? line.lineNum : '' }}</span>
       <span class="line-content" v-html="getLineContent(index)"></span>
@@ -38,6 +39,19 @@ interface SearchMatch {
 }
 
 const highlightedLines = ref<string[]>([]);
+const selectedLineIndex = ref<number | null>(null);
+
+const emit = defineEmits<{
+  'line-click': [lineIndex: number, lineNum: number];
+}>();
+
+const onLineClick = (index: number) => {
+  selectedLineIndex.value = index;
+  const line = props.lines[index];
+  if (line) {
+    emit('line-click', index, line.lineNum);
+  }
+};
 
 const escapeHtml = (text: string): string => {
   return text
@@ -183,6 +197,17 @@ watch(() => [props.lines, props.filename, props.theme], () => {
 
 .diff-line.empty {
   background-color: transparent;
+}
+
+/* 行点击选中高亮 */
+.diff-line.selected {
+  background-color: rgba(74, 126, 255, 0.2) !important;
+  box-shadow: inset 3px 0 0 0 #4a7eff;
+}
+
+[data-theme="dark"] .diff-line.selected {
+  background-color: rgba(74, 126, 255, 0.25) !important;
+  box-shadow: inset 3px 0 0 0 #4a7eff;
 }
 
 /* 搜索匹配高亮 */
