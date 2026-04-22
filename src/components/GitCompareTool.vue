@@ -92,6 +92,8 @@
         :old-branch="projectSettings.leftBranch"
         :new-branch="projectSettings.rightBranch"
         :branch-list="branchList"
+        :left-blame-info="leftBlameInfo"
+        :right-blame-info="rightBlameInfo"
         @scroll="handleScroll"
         @change-old-version="onDiffOldVersionChange"
         @change-new-version="onDiffNewVersionChange"
@@ -693,6 +695,55 @@ const availableNewVersions = computed(() => {
   // 只返回比旧版本更新的 commit（索引更小）
   return commitList.value.slice(0, oldIndex);
 });
+
+// Blame 信息
+interface BlameInfo {
+  line_number: number;
+  commit_hash: string;
+  short_hash: string;
+  author: string;
+  email: string;
+  timestamp: number;
+  summary: string;
+}
+
+const leftBlameInfo = ref<BlameInfo[]>([]);
+const rightBlameInfo = ref<BlameInfo[]>([]);
+
+// 加载 blame 信息
+const loadBlameInfo = async (filePath: string) => {
+  if (!currentPath.value) return;
+
+  try {
+    // 加载左侧 blame
+    const oldVersion = projectSettings.value.leftVersion;
+    if (oldVersion && oldVersion !== 'WORKING') {
+      leftBlameInfo.value = await invoke<BlameInfo[]>('get_file_blame', {
+        repoPath: currentPath.value,
+        filePath,
+        revision: oldVersion
+      });
+    } else {
+      leftBlameInfo.value = [];
+    }
+
+    // 加载右侧 blame
+    const newVersion = projectSettings.value.rightVersion;
+    if (newVersion && newVersion !== 'WORKING') {
+      rightBlameInfo.value = await invoke<BlameInfo[]>('get_file_blame', {
+        repoPath: currentPath.value,
+        filePath,
+        revision: newVersion
+      });
+    } else {
+      rightBlameInfo.value = [];
+    }
+  } catch (e) {
+    console.error('Failed to load blame info:', e);
+    leftBlameInfo.value = [];
+    rightBlameInfo.value = [];
+  }
+};
 
 // 旧版本变更处理
 const onOldVersionChange = () => {
@@ -1506,6 +1557,9 @@ const loadStagedFileDiff = async (file: FileNode) => {
     isBinary.value = false;
     diffStats.value = result.diffStats;
     currentFile.value = file;
+
+    // 加载 blame 信息
+    await loadBlameInfo(file.path);
   } catch (e) {
     console.error('Failed to load changed file diff:', e);
   }
@@ -2949,6 +3003,9 @@ const loadFileDiff = async (file: FileNode, forceRefresh = false): Promise<{ lef
 
     // 保存到缓存
     setDiffCache(cacheKey, result);
+
+    // 加载 blame 信息
+    await loadBlameInfo(file.path);
 
     return result;
   } catch (e) {

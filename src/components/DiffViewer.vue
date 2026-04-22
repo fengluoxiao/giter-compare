@@ -92,6 +92,7 @@
               :search-matches="leftSearchMatches"
               :current-match-index="currentLeftMatchIndex"
               :highlighted-line="highlightedLine"
+              :blame-info="leftBlameInfo"
               @line-click="onLeftLineClick"
             />
           </div>
@@ -109,6 +110,7 @@
               :search-matches="rightSearchMatches"
               :current-match-index="currentRightMatchIndex"
               :highlighted-line="highlightedLine"
+              :blame-info="rightBlameInfo"
               @line-click="onRightLineClick"
             />
           </div>
@@ -177,6 +179,16 @@ interface CommitInfo {
   message: string;
 }
 
+interface BlameInfo {
+  line_number: number;
+  commit_hash: string;
+  short_hash: string;
+  author: string;
+  email: string;
+  timestamp: number;
+  summary: string;
+}
+
 const props = defineProps<{
   currentFile: FileNode | null;
   leftLines: DiffLine[];
@@ -192,6 +204,8 @@ const props = defineProps<{
   oldBranch?: string;
   newBranch?: string;
   branchList?: string[];
+  leftBlameInfo?: BlameInfo[];
+  rightBlameInfo?: BlameInfo[];
 }>();
 
 // 判断是否是文件查看模式（通过检查文件状态是否为空）
@@ -242,6 +256,20 @@ const highlightedLine = ref<number | null>(null); // 当前高亮的行号
 // 行点击选中相关
 const selectedLeftLineIndex = ref<number | null>(null);
 const selectedRightLineIndex = ref<number | null>(null);
+
+// blame 信息
+interface BlameInfo {
+  line_number: number;
+  commit_hash: string;
+  short_hash: string;
+  author: string;
+  email: string;
+  timestamp: number;
+  summary: string;
+}
+
+const leftBlameInfo = ref<BlameInfo[]>([]);
+const rightBlameInfo = ref<BlameInfo[]>([]);
 
 // 处理左侧行点击
 const onLeftLineClick = (lineIndex: number, lineNum: number) => {

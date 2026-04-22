@@ -4,19 +4,32 @@
       v-for="(line, index) in lines"
       :key="index"
       class="diff-line"
-      :class="[line.changeType, { 'current-match': isCurrentMatch(index), 'jump-highlight': isJumpHighlight(index), 'selected': selectedLineIndex === index }]"
+      :class="[line.changeType, { 'current-match': isCurrentMatch(index), 'jump-highlight': isJumpHighlight(index), 'selected': selectedLineIndex === index, 'has-blame': showBlameInfo }]"
       :data-line="line.lineNum"
       @click="onLineClick(index)"
     >
       <span class="line-number">{{ line.lineNum > 0 ? line.lineNum : '' }}</span>
+      <span v-if="showBlameInfo" class="blame-info" :title="getBlameTooltip(index)">
+        {{ getBlameText(index) }}
+      </span>
       <span class="line-content" v-html="getLineContent(index)"></span>
     </div>
   </div>
 </template>
 
 <script setup lang="ts">
-import { ref, watch, onMounted } from 'vue';
+import { ref, watch, onMounted, computed } from 'vue';
 import { highlightCode } from '../utils/shikiHighlighter';
+
+interface BlameInfo {
+  line_number: number;
+  commit_hash: string;
+  short_hash: string;
+  author: string;
+  email: string;
+  timestamp: number;
+  summary: string;
+}
 
 const props = defineProps<{
   lines: {
@@ -30,6 +43,7 @@ const props = defineProps<{
   searchMatches?: SearchMatch[];
   currentMatchIndex?: number;
   highlightedLine?: number | null;
+  blameInfo?: BlameInfo[];
 }>();
 
 interface SearchMatch {
@@ -51,6 +65,34 @@ const onLineClick = (index: number) => {
   if (line) {
     emit('line-click', index, line.lineNum);
   }
+};
+
+// 是否显示 blame 信息
+const showBlameInfo = computed(() => {
+  return props.blameInfo && props.blameInfo.length > 0;
+});
+
+// 获取指定行的 blame 信息
+const getBlameForLine = (index: number): BlameInfo | undefined => {
+  if (!props.blameInfo || props.blameInfo.length === 0) return undefined;
+  const line = props.lines[index];
+  if (!line || line.lineNum <= 0) return undefined;
+  return props.blameInfo.find(b => b.line_number === line.lineNum);
+};
+
+// 获取 blame 显示文本
+const getBlameText = (index: number): string => {
+  const blame = getBlameForLine(index);
+  if (!blame) return '';
+  return `${blame.short_hash} ${blame.author}`;
+};
+
+// 获取 blame tooltip
+const getBlameTooltip = (index: number): string => {
+  const blame = getBlameForLine(index);
+  if (!blame) return '';
+  const date = new Date(blame.timestamp * 1000).toLocaleDateString('zh-CN');
+  return `${blame.summary}\n${blame.author} <${blame.email}>\n${date}`;
 };
 
 const escapeHtml = (text: string): string => {
@@ -197,6 +239,28 @@ watch(() => [props.lines, props.filename, props.theme], () => {
 
 .diff-line.empty {
   background-color: transparent;
+}
+
+/* blame 信息 */
+.blame-info {
+  width: 180px;
+  padding: 0 8px;
+  text-align: left;
+  color: var(--text-secondary);
+  background-color: var(--bg-secondary);
+  border-right: 1px solid var(--border-color);
+  font-size: 11px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  user-select: none;
+  flex-shrink: 0;
+  opacity: 0.7;
+  transition: opacity 0.2s ease;
+}
+
+.diff-line:hover .blame-info {
+  opacity: 1;
 }
 
 /* 行点击选中高亮 */

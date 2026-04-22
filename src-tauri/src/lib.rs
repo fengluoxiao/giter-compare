@@ -513,6 +513,89 @@ async fn get_staged_file_content(repo_path: String, file_path: String) -> Result
         .map_err(|e| format!("Failed to convert to string: {}", e))
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct BlameLineInfo {
+    pub line_number: usize,
+    pub commit_hash: String,
+    pub short_hash: String,
+    pub author: String,
+    pub email: String,
+    pub timestamp: i64,
+    pub summary: String,
+}
+
+#[tauri::command]
+async fn get_file_blame(repo_path: String, file_path: String, revision: String) -> Result<Vec<BlameLineInfo>, String> {
+    let repo = Repository::open(&repo_path)
+        .map_err(|e| format!("Failed to open repository: {}", e))?;
+
+    // 解析 revision
+    let obj = repo
+        .revparse_single(&revision)
+        .map_err(|e| format!("Failed to resolve revision '{}': {}", revision, e))?;
+    let commit = obj
+        .peel_to_commit()
+        .map_err(|e| format!("Failed to peel to commit: {}", e))?;
+
+    // 使用 git blame 命令获取 blame 信息
+    let output = Command::new("git")
+        .args(&[
+            "-C", &repo_path,
+            "blame",
+            "--porcelain",
+            "-L", "1,+999999",
+            &format!("{} -- {}", commit.id(), file_path)
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run git blame: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git blame failed: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut results = Vec::new();
+    let mut current_commit_hash = String::new();
+    let mut current_author = String::new();
+    let mut current_email = String::new();
+    let mut current_timestamp = 0i64;
+    let mut current_summary = String::new();
+    let mut line_number = 0usize;
+
+    for line in stdout.lines() {
+        if line.starts_with('\t') {
+            // 这是代码行内容，跳过
+            line_number += 1;
+            results.push(BlameLineInfo {
+                line_number,
+                commit_hash: current_commit_hash.clone(),
+                short_hash: current_commit_hash.chars().take(7).collect(),
+                author: current_author.clone(),
+                email: current_email.clone(),
+                timestamp: current_timestamp,
+                summary: current_summary.clone(),
+            });
+        } else if let Some(hash) = line.strip_prefix("author ") {
+            current_author = hash.to_string();
+        } else if let Some(email) = line.strip_prefix("author-mail ") {
+            current_email = email.trim_start_matches('<').trim_end_matches('>').to_string();
+        } else if let Some(time) = line.strip_prefix("author-time ") {
+            current_timestamp = time.parse().unwrap_or(0);
+        } else if let Some(summary) = line.strip_prefix("summary ") {
+            current_summary = summary.to_string();
+        } else if !line.starts_with(' ') && !line.starts_with('\t') && line.len() >= 40 {
+            // 这是 commit hash 行
+            let parts: Vec<&str> = line.split_whitespace().collect();
+            if !parts.is_empty() && parts[0].len() == 40 {
+                current_commit_hash = parts[0].to_string();
+            }
+        }
+    }
+
+    Ok(results)
+}
+
 fn parse_diff(diff_text: &str, _base_path: &str) -> Result<FileDiff, String> {
     let mut old_path = String::new();
     let mut new_path = String::new();
@@ -1666,7 +1749,8 @@ pub fn run() {
             show_context_menu,
             get_git_branches,
             get_current_branch,
-            get_commit_history
+            get_commit_history,
+            get_file_blame
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
