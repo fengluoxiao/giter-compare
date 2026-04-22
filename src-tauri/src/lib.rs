@@ -435,7 +435,11 @@ async fn get_diff_between_versions(repo_path: String, old_version: String, new_v
 }
 
 #[tauri::command]
-async fn get_file_content_at_revision(repo_path: String, file_path: String, revision: String) -> Result<String, String> {
+async fn get_file_content_at_revision(
+    repo_path: String,
+    file_path: String,
+    revision: String
+) -> Result<String, String> {
     let repo = Repository::open(repo_path)
         .map_err(|e| format!("Failed to open repository: {}", e))?;
 
@@ -543,8 +547,9 @@ async fn get_file_blame(repo_path: String, file_path: String, revision: String) 
             "-C", &repo_path,
             "blame",
             "--porcelain",
-            "-L", "1,+999999",
-            &format!("{} -- {}", commit.id(), file_path)
+            &commit.id().to_string(),
+            "--",
+            &file_path
         ])
         .output()
         .map_err(|e| format!("Failed to run git blame: {}", e))?;
@@ -594,6 +599,100 @@ async fn get_file_blame(repo_path: String, file_path: String, revision: String) 
     }
 
     Ok(results)
+}
+
+#[tauri::command]
+async fn get_full_path(repo_path: String, file_path: String) -> Result<String, String> {
+    let path = std::path::Path::new(&repo_path).join(&file_path);
+    Ok(path.to_string_lossy().to_string())
+}
+
+#[tauri::command]
+async fn open_in_finder(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(&["-R", &path])
+            .spawn()
+            .map_err(|e| format!("Failed to open Finder: {}", e))?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("explorer")
+            .args(&["/select,", &path])
+            .spawn()
+            .map_err(|e| format!("Failed to open Explorer: {}", e))?;
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        return Err("Unsupported platform".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn open_in_editor(path: String) -> Result<(), String> {
+    #[cfg(target_os = "macos")]
+    {
+        std::process::Command::new("open")
+            .args(&["-t", &path])
+            .spawn()
+            .map_err(|e| format!("Failed to open editor: {}", e))?;
+    }
+    #[cfg(target_os = "windows")]
+    {
+        std::process::Command::new("notepad")
+            .arg(&path)
+            .spawn()
+            .map_err(|e| format!("Failed to open editor: {}", e))?;
+    }
+    #[cfg(not(any(target_os = "macos", target_os = "windows")))]
+    {
+        return Err("Unsupported platform".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn stage_file(repo_path: String, file_path: String) -> Result<(), String> {
+    let output = std::process::Command::new("git")
+        .args(&["-C", &repo_path, "add", &file_path])
+        .output()
+        .map_err(|e| format!("Failed to stage file: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git add failed: {}", stderr));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn unstage_file(repo_path: String, file_path: String) -> Result<(), String> {
+    let output = std::process::Command::new("git")
+        .args(&["-C", &repo_path, "reset", "HEAD", &file_path])
+        .output()
+        .map_err(|e| format!("Failed to unstage file: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git reset failed: {}", stderr));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+async fn discard_changes(repo_path: String, file_path: String) -> Result<(), String> {
+    let output = std::process::Command::new("git")
+        .args(&["-C", &repo_path, "checkout", "--", &file_path])
+        .output()
+        .map_err(|e| format!("Failed to discard changes: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git checkout failed: {}", stderr));
+    }
+    Ok(())
 }
 
 fn parse_diff(diff_text: &str, _base_path: &str) -> Result<FileDiff, String> {
@@ -1240,6 +1339,104 @@ async fn get_commit_history(repo_path: String, limit: Option<usize>) -> Result<V
     Ok(commits)
 }
 
+#[tauri::command]
+async fn get_file_history(repo_path: String, file_path: String, limit: Option<usize>) -> Result<Vec<CommitInfo>, String> {
+    let output = std::process::Command::new("git")
+        .args(&[
+            "-C", &repo_path,
+            "log",
+            "--follow",
+            "--pretty=format:%H|%h|%s|%an|%ad",
+            "--date=format:%Y-%m-%d %H:%M",
+            "-n", &limit.unwrap_or(50).to_string(),
+            "--",
+            &file_path
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run git log: {}", e))?;
+
+    if !output.status.success() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        return Err(format!("git log failed: {}", stderr));
+    }
+
+    let stdout = String::from_utf8_lossy(&output.stdout);
+    let mut commits = Vec::new();
+
+    for line in stdout.lines() {
+        let parts: Vec<&str> = line.splitn(5, '|').collect();
+        if parts.len() >= 5 {
+            commits.push(CommitInfo {
+                hash: parts[0].to_string(),
+                short_hash: parts[1].to_string(),
+                message: parts[2].to_string(),
+                author: parts[3].to_string(),
+                date: parts[4].to_string(),
+            });
+        }
+    }
+
+    Ok(commits)
+}
+
+#[tauri::command]
+async fn get_commit_parent(
+    repo_path: String,
+    commit_hash: String
+) -> Result<String, String> {
+    let output = std::process::Command::new("git")
+        .args(&[
+            "-C", &repo_path,
+            "rev-parse",
+            "--verify",
+            &format!("{}^", commit_hash)
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run git rev-parse: {}", e))?;
+
+    if output.status.success() {
+        let parent = String::from_utf8_lossy(&output.stdout).trim().to_string();
+        Ok(parent)
+    } else {
+        // 可能是初始提交，没有父提交
+        Ok(String::new())
+    }
+}
+
+#[tauri::command]
+async fn get_diff_between_commits(
+    repo_path: String,
+    old_commit: String,
+    new_commit: String,
+    file_path: String,
+) -> Result<FileDiff, String> {
+    let output = std::process::Command::new("git")
+        .args(&[
+            "-C", &repo_path,
+            "diff",
+            "--no-prefix",
+            "-U10000",
+            &old_commit,
+            &new_commit,
+            "--",
+            &file_path
+        ])
+        .output()
+        .map_err(|e| format!("Failed to run git diff: {}", e))?;
+
+    // git diff 会返回非零状态码当存在差异时，但输出仍然有效
+    let diff_text = String::from_utf8_lossy(&output.stdout);
+    
+    if diff_text.is_empty() {
+        let stderr = String::from_utf8_lossy(&output.stderr);
+        if !stderr.is_empty() && !stderr.contains("error: could not access") {
+            return Err(format!("git diff failed: {}", stderr));
+        }
+    }
+
+    parse_diff(&diff_text, &file_path)
+}
+
 // 导入 VSCode 语法高亮插件
 #[tauri::command]
 async fn import_vscode_plugin(
@@ -1750,7 +1947,16 @@ pub fn run() {
             get_git_branches,
             get_current_branch,
             get_commit_history,
-            get_file_blame
+            get_file_history,
+            get_commit_parent,
+            get_diff_between_commits,
+            get_file_blame,
+            get_full_path,
+            open_in_finder,
+            open_in_editor,
+            stage_file,
+            unstage_file,
+            discard_changes
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

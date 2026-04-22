@@ -233,6 +233,15 @@ const availableNewVersions = computed(() => {
   return props.commitList.slice(0, oldIndex);
 });
 
+// 调试 blame 信息
+watch(() => props.leftBlameInfo, (newVal) => {
+  console.log('DiffViewer leftBlameInfo changed:', newVal?.length);
+}, { immediate: true });
+
+watch(() => props.rightBlameInfo, (newVal) => {
+  console.log('DiffViewer rightBlameInfo changed:', newVal?.length);
+}, { immediate: true });
+
 // 代码内容区域 refs，用于同步滚动
 const leftCodeContent = ref<HTMLElement | null>(null);
 const rightCodeContent = ref<HTMLElement | null>(null);

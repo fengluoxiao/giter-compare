@@ -78,6 +78,7 @@
         :nodes="filteredFileTree"
         @select="$emit('select-file', $event)"
         @toggle="$emit('toggle-directory', $event)"
+        @menu-action="(action, node) => $emit('file-contextmenu', action, node)"
       />
       <!-- 暂存区：显示更改的文件列表 -->
       <StagedFileList
@@ -145,6 +146,7 @@ defineEmits<{
   'toggle-directory': [node: FileNode];
   'select-staged-file': [path: string];
   'start-resize': [event: MouseEvent];
+  'file-contextmenu': [action: string, node: FileNode];
 }>();
 
 // 搜索功能

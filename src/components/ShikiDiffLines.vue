@@ -69,7 +69,9 @@ const onLineClick = (index: number) => {
 
 // 是否显示 blame 信息
 const showBlameInfo = computed(() => {
-  return props.blameInfo && props.blameInfo.length > 0;
+  const hasBlame = props.blameInfo && props.blameInfo.length > 0;
+  console.log('ShikiDiffLines showBlameInfo:', hasBlame, 'blameInfo length:', props.blameInfo?.length);
+  return hasBlame;
 });
 
 // 获取指定行的 blame 信息
@@ -84,7 +86,7 @@ const getBlameForLine = (index: number): BlameInfo | undefined => {
 const getBlameText = (index: number): string => {
   const blame = getBlameForLine(index);
   if (!blame) return '';
-  return `${blame.short_hash} ${blame.author}`;
+  return `${blame.author}: ${blame.summary}`;
 };
 
 // 获取 blame tooltip

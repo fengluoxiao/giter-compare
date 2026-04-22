@@ -74,6 +74,7 @@
         @toggle-directory="toggleDirectory"
         @select-staged-file="selectStagedFile"
         @start-resize="startResizeFileSidebar"
+        @file-contextmenu="handleFileContextMenu"
       />
 
       <!-- 右侧比对区 -->
@@ -294,6 +295,66 @@
         <div class="settings-actions">
           <button class="btn btn-secondary" @click="showProjectSettings = false">取消</button>
           <button class="btn btn-primary" @click="saveProjectSettings">保存设置</button>
+        </div>
+      </div>
+    </div>
+
+    <!-- 文件历史弹窗 -->
+    <div v-if="showFileHistory" class="permission-overlay" @click.self="showFileHistory = false">
+      <div class="project-settings-dialog file-history-dialog">
+        <div class="settings-header">
+          <h3>📜 {{ fileHistoryFileName }} - 历史变更</h3>
+          <button class="close-btn" @click="showFileHistory = false">×</button>
+        </div>
+        <div class="settings-content file-history-content">
+          <div v-if="fileHistoryLoading" class="history-loading">加载中...</div>
+          <div v-else-if="fileHistoryList.length === 0" class="history-empty">暂无历史记录</div>
+          <div v-else class="history-list">
+            <div
+              v-for="(commit, index) in fileHistoryList"
+              :key="commit.hash"
+              class="history-item"
+              :class="{ 'history-item-first': index === 0 }"
+              @click="viewFileAtCommit(commit.hash)"
+            >
+              <div class="history-commit-header">
+                <span class="history-hash">{{ commit.short_hash }}</span>
+                <span class="history-date">{{ commit.date }}</span>
+              </div>
+              <div class="history-message">{{ commit.message }}</div>
+              <div class="history-author">{{ commit.author }}</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 历史文件内容弹窗 -->
+    <div v-if="showHistoryFileContent" class="permission-overlay" @click.self="closeHistoryFileContent">
+      <div class="project-settings-dialog file-content-dialog">
+        <div class="settings-header">
+          <h3>📄 {{ fileHistoryFileName }}</h3>
+          <button class="close-btn" @click="closeHistoryFileContent">×</button>
+        </div>
+        <div class="file-content-commit-info">
+          <span>{{ historyFileContentCommit }}</span>
+          <label class="diff-toggle">
+            <input
+              type="checkbox"
+              v-model="showOnlyDiff"
+              @change="onShowOnlyDiffChange"
+            />
+            <span class="diff-toggle-label">只显示变更</span>
+          </label>
+        </div>
+        <div class="file-content-body">
+          <div v-if="historyFileContentLoading" class="history-loading">加载中...</div>
+          <ShikiDiffLines
+            v-else
+            :lines="historyFileLines"
+            :filename="fileHistoryFileName"
+            :theme="theme === 'dark' ? 'dark' : 'light'"
+          />
         </div>
       </div>
     </div>
@@ -521,6 +582,7 @@ import Toolbar from './Toolbar.vue';
 import ProjectSidebar from './ProjectSidebar.vue';
 import FileTreeSidebar from './FileTreeSidebar.vue';
 import DiffViewer from './DiffViewer.vue';
+import ShikiDiffLines from './ShikiDiffLines.vue';
 import TabBar, { type Tab } from './TabBar.vue';
 import { FileCompareDialog, TextCompareDialog, AddProjectDialog, PromptDialog, GlobalSearchDialog } from './dialogs';
 
@@ -582,6 +644,47 @@ const theme = ref('light');
 const viewMode = ref<'working' | 'staged'>('working');
 const showAllFiles = ref(true);
 const showDeletedFiles = ref(false);
+
+// 文件历史弹窗状态
+const showFileHistory = ref(false);
+const fileHistoryFileName = ref('');
+const fileHistoryFilePath = ref('');
+const fileHistoryLoading = ref(false);
+const fileHistoryList = ref<CommitInfo[]>([]);
+
+// 查看历史文件内容弹窗状态
+const showHistoryFileContent = ref(false);
+const historyFileContent = ref('');
+const historyFileContentCommit = ref('');
+const historyFileContentLoading = ref(false);
+const currentHistoryCommit = ref(''); // 当前查看的 commit hash
+const showOnlyDiff = ref(false); // 只显示该版本更新的代码
+
+// 关闭历史文件内容弹窗
+const closeHistoryFileContent = () => {
+  showHistoryFileContent.value = false;
+  showOnlyDiff.value = false; // 关闭窗口时重置开关状态
+};
+
+// 历史文件内容行数据（用于语法高亮）
+const historyFileLines = computed(() => {
+  if (!historyFileContent.value) return [];
+  return historyFileContent.value.split('\n').map((line, index) => {
+    // 根据前缀判断 changeType
+    let changeType = 'unchanged';
+    if (line.startsWith('+ ')) {
+      changeType = 'added';
+    } else if (line.startsWith('- ')) {
+      changeType = 'removed';
+    }
+    return {
+      lineNum: index + 1,
+      content: line,
+      changeType: changeType,
+      isDiff: changeType !== 'unchanged'
+    };
+  });
+});
 
 // 是否使用原生工具栏（macOS 平台）
 const useNativeToolbar = ref(false);
@@ -950,8 +1053,8 @@ const loadCompareVersions = (projectPath: string) => {
       projectSettings.value.leftBranch = saved.leftBranch || projectSettings.value.defaultBranch || 'main';
       projectSettings.value.rightBranch = saved.rightBranch || projectSettings.value.defaultBranch || 'main';
     } else {
-      // 没有保存的设置，恢复默认值
-      projectSettings.value.leftVersion = 'HEAD';
+      // 没有保存的设置，恢复默认值（空字符串表示使用工作区模式）
+      projectSettings.value.leftVersion = '';
       projectSettings.value.rightVersion = 'WORKING';
       projectSettings.value.compareBranches = false;
       projectSettings.value.leftBranch = projectSettings.value.defaultBranch || 'main';
@@ -1102,7 +1205,10 @@ onMounted(async () => {
     showDeletedFiles.value = savedShowDeleted === 'true';
   }
 
-  loadWorkspaces();
+  // 等待 Tauri 完全准备好后再加载工作区和项目
+  setTimeout(async () => {
+    await loadWorkspaces();
+  }, 500);
 
   // 设置初始窗口标题
   getCurrentWindow().setTitle('Giter Compare');
@@ -1894,13 +2000,17 @@ const removeProject = (projectId: string) => {
     currentPath.value = '';
     fileTree.value = [];
     currentFile.value = null;
+    localStorage.removeItem('giter-current-project');
   }
 };
 
 const switchProject = async (project: Project) => {
   currentProjectId.value = project.id;
   currentPath.value = project.path;
-  
+
+  // 保存当前选择的项目ID
+  localStorage.setItem('giter-current-project', project.id);
+
   // 清除更改列表，避免显示上一个项目的更改
   stagedFiles.value = [];
   selectedStagedPath.value = '';
@@ -1945,11 +2055,13 @@ const saveWorkspaces = () => {
 };
 
 // 加载工作区列表
-const loadWorkspaces = () => {
+const loadWorkspaces = async () => {
+  console.log('Loading workspaces...');
   const saved = localStorage.getItem('giter-workspaces');
   if (saved) {
     try {
       workspaces.value = JSON.parse(saved);
+      console.log('Workspaces loaded:', workspaces.value.length);
       // 加载当前工作区 ID
       const savedCurrent = localStorage.getItem('giter-current-workspace');
       if (savedCurrent && workspaces.value.length > 0) {
@@ -1966,6 +2078,21 @@ const loadWorkspaces = () => {
         currentWorkspaceId.value = workspaces.value[0].id;
         projects.value = workspaces.value[0].projects;
       }
+      console.log('Projects loaded:', projects.value.length);
+
+      // 自动加载上次选择的项目或第一个项目
+      const savedCurrentProject = localStorage.getItem('giter-current-project');
+      console.log('Saved current project:', savedCurrentProject);
+      if (projects.value.length > 0) {
+        const projectToLoad = savedCurrentProject
+          ? projects.value.find(p => p.id === savedCurrentProject)
+          : projects.value[0];
+        console.log('Project to load:', projectToLoad?.name || 'none');
+        if (projectToLoad) {
+          console.log('Auto-switching to project:', projectToLoad.name);
+          await switchProject(projectToLoad);
+        }
+      }
     } catch (e) {
       console.error('Failed to load workspaces:', e);
       // 兼容旧数据
@@ -1974,7 +2101,7 @@ const loadWorkspaces = () => {
   } else {
     // 兼容旧数据格式
     loadProjects();
-    
+
     // 如果没有工作区也没有旧数据，创建默认工作区
     if (workspaces.value.length === 0) {
       const defaultWorkspace: Workspace = {
@@ -2174,6 +2301,7 @@ const switchWorkspace = (workspaceId: string) => {
   currentPath.value = '';
   fileTree.value = [];
   currentFile.value = null;
+  localStorage.removeItem('giter-current-project');
   saveWorkspaces();
 };
 
@@ -3020,6 +3148,152 @@ const loadFileDiff = async (file: FileNode, forceRefresh = false): Promise<{ lef
   }
 };
 
+// 查看文件历史变更
+const viewFileHistory = async (filePath: string) => {
+  console.log('viewFileHistory called:', filePath);
+  if (!currentPath.value) {
+    console.log('currentPath is empty');
+    return;
+  }
+  
+  fileHistoryFilePath.value = filePath;
+  fileHistoryFileName.value = filePath.split('/').pop() || filePath;
+  showFileHistory.value = true;
+  fileHistoryLoading.value = true;
+  fileHistoryList.value = [];
+  
+  console.log('showFileHistory set to true');
+  
+  try {
+    console.log('calling get_file_history:', currentPath.value, filePath);
+    const commits = await invoke<CommitInfo[]>('get_file_history', {
+      repoPath: currentPath.value,
+      filePath: filePath,
+      limit: 50
+    });
+    console.log('get_file_history result:', commits.length);
+    fileHistoryList.value = commits;
+  } catch (error) {
+    console.error('获取文件历史失败:', error);
+    fileHistoryList.value = [];
+  } finally {
+    fileHistoryLoading.value = false;
+  }
+};
+
+// 处理"只显示变更"开关变化
+const onShowOnlyDiffChange = () => {
+  if (currentHistoryCommit.value) {
+    viewFileAtCommit(currentHistoryCommit.value);
+  }
+};
+
+// 查看指定版本的文件内容
+const viewFileAtCommit = async (commitHash: string) => {
+  if (!currentPath.value || !fileHistoryFilePath.value) return;
+
+  // 获取 commit 信息
+  const commit = fileHistoryList.value.find(c => c.hash === commitHash);
+  if (!commit) return;
+
+  currentHistoryCommit.value = commitHash;
+  historyFileContentCommit.value = `${commit.short_hash} - ${commit.message}`;
+  showHistoryFileContent.value = true;
+  historyFileContentLoading.value = true;
+  historyFileContent.value = '';
+
+  try {
+    if (showOnlyDiff.value) {
+      // 只显示该版本更新的代码（diff）
+      const parentHash = await invoke<string>('get_commit_parent', {
+        repoPath: currentPath.value,
+        commitHash: commitHash
+      });
+
+      const diffResult = await invoke<FileDiff>('get_diff_between_commits', {
+        repoPath: currentPath.value,
+        oldCommit: parentHash || '4b825dc642cb6eb9a060e54bf8d69288fbee4904', // empty tree hash
+        newCommit: commitHash,
+        filePath: fileHistoryFilePath.value
+      });
+
+      // 只显示有变更的行
+      const diffLines: string[] = [];
+      diffResult.hunks.forEach(hunk => {
+        hunk.lines.forEach(line => {
+          if (line.change_type !== 'unchanged') {
+            const prefix = line.change_type === 'added' ? '+' : line.change_type === 'removed' ? '-' : ' ';
+            diffLines.push(`${prefix} ${line.content}`);
+          }
+        });
+      });
+
+      historyFileContent.value = diffLines.join('\n') || '该版本没有代码变更';
+    } else {
+      // 获取该版本的完整文件内容
+      const content = await invoke<string>('get_file_content_at_revision', {
+        repoPath: currentPath.value,
+        filePath: fileHistoryFilePath.value,
+        revision: commitHash
+      });
+
+      historyFileContent.value = content;
+    }
+  } catch (error: any) {
+    console.error('获取文件内容失败:', error);
+    historyFileContent.value = '获取文件内容失败: ' + (error?.message || error || '未知错误');
+  } finally {
+    historyFileContentLoading.value = false;
+  }
+};
+
+// 处理文件树右击菜单
+const handleFileContextMenu = async (action: string, node: FileNode) => {
+  console.log('handleFileContextMenu:', action, node.path);
+  if (!currentPath.value) {
+    console.log('currentPath is empty');
+    return;
+  }
+
+  switch (action) {
+    case 'copyPath':
+      {
+        const fullPath = await invoke<string>('get_full_path', {
+          repoPath: currentPath.value,
+          filePath: node.path
+        }).catch(() => node.path);
+        await navigator.clipboard.writeText(fullPath);
+      }
+      break;
+    case 'copyRelativePath':
+      await navigator.clipboard.writeText(node.path);
+      break;
+    case 'openInFinder':
+      {
+        const fullPath = await invoke<string>('get_full_path', {
+          repoPath: currentPath.value,
+          filePath: node.path
+        }).catch(() => node.path);
+        await invoke('open_in_finder', { path: fullPath });
+      }
+      break;
+    case 'openInEditor':
+      {
+        const fullPath = await invoke<string>('get_full_path', {
+          repoPath: currentPath.value,
+          filePath: node.path
+        }).catch(() => node.path);
+        await invoke('open_in_editor', { path: fullPath });
+      }
+      break;
+    case 'viewHistory':
+      // 打开文件历史变更查看
+      console.log('calling viewFileHistory for:', node.path);
+      await viewFileHistory(node.path);
+      break;
+  }
+};
+
 // 选择文件 - 支持多标签
 const selectFile = async (path: string) => {
   const findFile = (nodes: FileNode[]): FileNode | null => {
@@ -3517,7 +3791,7 @@ const doTextCompare = async () => {
   display: flex;
   align-items: center;
   justify-content: center;
-  z-index: 9999;
+  z-index: 10000;
 }
 
 .permission-dialog {
@@ -3678,6 +3952,179 @@ const doTextCompare = async () => {
   display: flex;
   flex-direction: column;
   overflow: hidden;
+}
+
+/* 文件历史弹窗 */
+.file-history-dialog {
+  width: 480px;
+}
+
+.file-history-content {
+  padding: 0;
+}
+
+.history-loading,
+.history-empty {
+  padding: 40px;
+  text-align: center;
+  color: #888;
+  font-size: 14px;
+}
+
+.history-list {
+  padding: 8px 0;
+}
+
+.history-item {
+  padding: 12px 20px;
+  border-bottom: 1px solid #f0f0f0;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.history-item:hover {
+  background-color: #f5f7fa;
+}
+
+.history-item-first {
+  background-color: #f0f7ff;
+}
+
+.history-item-first:hover {
+  background-color: #e0f0ff;
+}
+
+.history-commit-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-bottom: 6px;
+}
+
+.history-hash {
+  font-family: 'SF Mono', Monaco, monospace;
+  font-size: 12px;
+  color: #4a7eff;
+  background-color: #eef2ff;
+  padding: 2px 8px;
+  border-radius: 4px;
+}
+
+.history-date {
+  font-size: 11px;
+  color: #999;
+}
+
+.history-message {
+  font-size: 13px;
+  color: #333;
+  font-weight: 500;
+  margin-bottom: 4px;
+  line-height: 1.4;
+}
+
+.history-author {
+  font-size: 11px;
+  color: #888;
+}
+
+/* 文件内容弹窗 */
+.file-content-dialog {
+  width: 800px;
+  max-width: 90vw;
+  height: 70vh;
+  max-height: 80vh;
+}
+
+.file-content-commit-info {
+  padding: 8px 20px;
+  background-color: #f5f7fa;
+  border-bottom: 1px solid #e8e8e8;
+  font-size: 12px;
+  color: #666;
+  font-family: 'SF Mono', Monaco, monospace;
+}
+
+.file-content-body {
+  flex: 1;
+  overflow: auto;
+  padding: 0;
+  background-color: #fafafa;
+}
+
+.file-content-pre {
+  margin: 0;
+  padding: 16px 20px;
+  font-family: 'SF Mono', Monaco, 'Cascadia Code', 'Fira Code', monospace;
+  font-size: 13px;
+  line-height: 1.6;
+  color: #333;
+  white-space: pre-wrap;
+  word-wrap: break-word;
+  background-color: transparent;
+}
+
+.file-content-pre code {
+  font-family: inherit;
+  background-color: transparent;
+  padding: 0;
+}
+
+/* 只显示变更开关 - 现代 Toggle Switch 样式 */
+.diff-toggle {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  cursor: pointer;
+  margin-left: auto;
+  user-select: none;
+  margin-top: 8px;
+}
+
+.diff-toggle input[type="checkbox"] {
+  appearance: none;
+  -webkit-appearance: none;
+  width: 36px;
+  height: 20px;
+  background-color: #d1d5db;
+  border-radius: 10px;
+  position: relative;
+  cursor: pointer;
+  transition: background-color 0.2s ease;
+  outline: none;
+  flex-shrink: 0;
+}
+
+.diff-toggle input[type="checkbox"]::before {
+  content: '';
+  position: absolute;
+  width: 16px;
+  height: 16px;
+  background-color: white;
+  border-radius: 50%;
+  top: 2px;
+  left: 2px;
+  transition: transform 0.2s ease;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
+}
+
+.diff-toggle input[type="checkbox"]:checked {
+  background-color: #4a7eff;
+}
+
+.diff-toggle input[type="checkbox"]:checked::before {
+  transform: translateX(16px);
+}
+
+.diff-toggle input[type="checkbox"]:hover:not(:checked) {
+  background-color: #b8bcc4;
+}
+
+.diff-toggle-label {
+  font-size: 12px;
+  color: #555;
+  font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  font-weight: 500;
 }
 
 .settings-header {
@@ -4476,6 +4923,78 @@ const doTextCompare = async () => {
 [data-theme="dark"] .project-settings-dialog .settings-actions {
   background-color: #252526;
   border-top-color: #3e3e42;
+}
+
+/* ========== 文件历史弹窗深色模式适配 ========== */
+
+[data-theme="dark"] .history-loading,
+[data-theme="dark"] .history-empty {
+  color: #858585;
+}
+
+[data-theme="dark"] .history-item {
+  border-bottom-color: #3e3e42;
+}
+
+[data-theme="dark"] .history-item:hover {
+  background-color: #2d2d30;
+}
+
+[data-theme="dark"] .history-item-first {
+  background-color: #1a3a5c;
+}
+
+[data-theme="dark"] .history-item-first:hover {
+  background-color: #1e4a70;
+}
+
+[data-theme="dark"] .history-hash {
+  color: #6b9fff;
+  background-color: #1a3a5c;
+}
+
+[data-theme="dark"] .history-date {
+  color: #858585;
+}
+
+[data-theme="dark"] .history-message {
+  color: #cccccc;
+}
+
+[data-theme="dark"] .history-author {
+  color: #858585;
+}
+
+/* ========== 文件内容弹窗深色模式适配 ========== */
+
+[data-theme="dark"] .file-content-commit-info {
+  background-color: #1e1e1e;
+  border-bottom-color: #3e3e42;
+  color: #858585;
+}
+
+[data-theme="dark"] .file-content-body {
+  background-color: #1e1e1e;
+}
+
+[data-theme="dark"] .file-content-pre {
+  color: #cccccc;
+}
+
+[data-theme="dark"] .diff-toggle-label {
+  color: #a0a0a0;
+}
+
+[data-theme="dark"] .diff-toggle input[type="checkbox"] {
+  background-color: #4a4a4a;
+}
+
+[data-theme="dark"] .diff-toggle input[type="checkbox"]:hover:not(:checked) {
+  background-color: #555555;
+}
+
+[data-theme="dark"] .diff-toggle input[type="checkbox"]:checked {
+  background-color: #4a7eff;
 }
 
 /* 底部状态栏 */
